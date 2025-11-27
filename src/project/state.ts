@@ -1,12 +1,6 @@
 import { lazy } from "@/util/lazy.ts"
 import type { ProjectInfo } from "./project.ts"
-
-// Placeholder types — we'll define these properly as we build each system
-
-/** Project configuration (loaded from .tinker/config or similar) */
-export interface ProjectConfig {
-  // TODO: Define config schema with Zod when we build the config system
-}
+import type { Config } from "@/config/index.ts"
 
 /** Storage handle for this project (could be SQLite, JSON, etc.) */
 export interface ProjectStorage {
@@ -21,8 +15,8 @@ export interface ProjectState {
   /** Project metadata (root path, name, git info) */
   info: ProjectInfo
 
-  /** Project configuration */
-  config: () => Promise<ProjectConfig>
+  /** Project configuration (partial overrides) */
+  config: () => Promise<Partial<Config>>
 
   /** Project storage */
   storage: () => Promise<ProjectStorage>
@@ -38,8 +32,8 @@ export function createProjectState(info: ProjectInfo): ProjectState {
 
     // Lazy config loading
     config: lazy(async () => {
-      // TODO: Load from .tinker/config.json or similar
-      return {} as ProjectConfig
+      // TODO: Load from {project}/.tinker/config.json
+      return {} as Partial<Config>
     }),
 
     // Lazy storage initialization

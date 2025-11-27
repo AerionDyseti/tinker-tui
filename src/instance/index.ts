@@ -1,22 +1,46 @@
 import { detectProject } from "@/project/project.ts"
 import { createProjectState, type ProjectState } from "@/project/state.ts"
-import type { InstanceState, ProviderConfig, KeybindConfig } from "./types.ts"
+import { DEFAULT_CONFIG, type Config } from "@/config/index.ts"
+import type { InstanceState } from "./types.ts"
 
 /**
  * Global state for the running instance.
  */
 const state: InstanceState = {
+  config: DEFAULT_CONFIG,
   projects: new Map(),
   activeProjectPath: null,
-  provider: null,
-  keybinds: {},
 }
 
 /**
  * Instance — the running process singleton.
- * Holds global state: open projects, active project, provider config, keybinds.
+ * Holds global state: config, open projects, active project.
  */
 export const Instance = {
+  // ─── Config ───────────────────────────────────────────────
+
+  /** Get instance-level config */
+  get config(): Config {
+    return state.config
+  },
+
+  /** Set instance-level config */
+  setConfig(config: Config): void {
+    state.config = config
+  },
+
+  /** Update specific config fields */
+  updateConfig(partial: Partial<Config>): void {
+    state.config = { ...state.config, ...partial }
+  },
+
+  /** Load config from storage (TODO: implement actual loading) */
+  async loadConfig(): Promise<Config> {
+    // TODO: Load from ~/.tinker/config.json or similar
+    // For now, return defaults
+    return DEFAULT_CONFIG
+  },
+
   // ─── Projects ─────────────────────────────────────────────
 
   /** Get all open projects */
@@ -67,40 +91,15 @@ export const Instance = {
     return true
   },
 
-  // ─── Provider ─────────────────────────────────────────────
-
-  /** Get current provider config */
-  get provider(): ProviderConfig | null {
-    return state.provider
-  },
-
-  /** Set provider config */
-  setProvider(config: ProviderConfig): void {
-    state.provider = config
-  },
-
-  // ─── Keybinds ─────────────────────────────────────────────
-
-  /** Get keybind config */
-  get keybinds(): KeybindConfig {
-    return state.keybinds
-  },
-
-  /** Set keybind config */
-  setKeybinds(config: KeybindConfig): void {
-    state.keybinds = config
-  },
-
   // ─── Utilities ────────────────────────────────────────────
 
   /** Reset all state (useful for testing) */
   reset(): void {
+    state.config = DEFAULT_CONFIG
     state.projects.clear()
     state.activeProjectPath = null
-    state.provider = null
-    state.keybinds = {}
   },
 }
 
 // Re-export types
-export type { InstanceState, ProviderConfig, KeybindConfig } from "./types.ts"
+export type { InstanceState } from "./types.ts"

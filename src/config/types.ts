@@ -25,7 +25,7 @@ export type ProviderConfig =
  * Config — the complete configuration shape.
  *
  * - User level: fully populated (with defaults)
- * - Project level: PartialConfig (overrides only)
+ * - Project level: Partial<Config> (overrides only)
  * - Resolved: merge of user + project → complete Config
  */
 export interface Config {
@@ -63,12 +63,3 @@ export const DEFAULT_CONFIG: Config = {
   },
 }
 
-/**
- * Deep partial type — all fields optional, recursively.
- * Used for project-level overrides.
- */
-export type PartialConfig = DeepPartial<Config>
-
-type DeepPartial<T> = {
-  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P]
-}
