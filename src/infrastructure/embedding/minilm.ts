@@ -35,7 +35,7 @@ export class MiniLMEmbedder implements Embedder {
     return this.pipeline!
   }
 
-  async embed(text: string, type?: string): Promise<Embedding> {
+  async embed(text: string): Promise<Embedding> {
     const pipe = await this.ensureReady()
 
     const output = await pipe(text, {
@@ -48,13 +48,13 @@ export class MiniLMEmbedder implements Embedder {
 
     return {
       vector,
-      embedder: this.name,
-      type,
-      createdAt: Date.now(),
+      model: MODEL_NAME,
+      dimensions: this.dimensions,
+      createdAt: new Date(),
     }
   }
 
-  async embedBatch(texts: string[], type?: string): Promise<Embedding[]> {
+  async embedBatch(texts: string[]): Promise<Embedding[]> {
     const pipe = await this.ensureReady()
 
     const output = await pipe(texts, {
@@ -64,7 +64,7 @@ export class MiniLMEmbedder implements Embedder {
 
     // Batch output shape: [batch_size, dimensions]
     const data = output.data as Float32Array
-    const now = Date.now()
+    const now = new Date()
 
     const embeddings: Embedding[] = []
     for (let i = 0; i < texts.length; i++) {
@@ -72,8 +72,8 @@ export class MiniLMEmbedder implements Embedder {
       const vector = Array.from(data.slice(start, start + this.dimensions))
       embeddings.push({
         vector,
-        embedder: this.name,
-        type,
+        model: MODEL_NAME,
+        dimensions: this.dimensions,
         createdAt: now,
       })
     }

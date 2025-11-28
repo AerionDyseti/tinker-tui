@@ -4,20 +4,19 @@
 export type ProviderConfig =
   | {
       type: "claude-code"
-      model: string              // e.g., "claude-sonnet-4-20250514"
+      model: string // e.g., "claude-sonnet-4-20250514"
       // Uses Claude Code's auth token — no API key needed
-      // TODO: Figure out how OpenCode extracts this
     }
   | {
       type: "openrouter"
-      model: string              // e.g., "anthropic/claude-3.5-sonnet"
-      apiKey: string             // OpenRouter API key
-      baseUrl?: string           // defaults to https://openrouter.ai/api/v1
+      model: string // e.g., "anthropic/claude-3.5-sonnet"
+      apiKey: string // OpenRouter API key
+      baseUrl?: string // defaults to https://openrouter.ai/api/v1
     }
   | {
       type: "local"
-      model: string              // e.g., "llama3", "mistral"
-      baseUrl: string            // e.g., "http://localhost:11434"
+      model: string // e.g., "llama3", "mistral"
+      baseUrl: string // e.g., "http://localhost:11434"
       runtime: "ollama" | "lmstudio" | "llamacpp" | "other"
     }
 
@@ -32,18 +31,13 @@ export interface Config {
   provider: ProviderConfig
 
   theme: {
-    name: string             // e.g., "dark", "light"
+    name: string // e.g., "dark", "light"
   }
 
   editor: {
     tabSize: number
     insertSpaces: boolean
   }
-
-  // TODO: Expand as needed:
-  // - keybinds
-  // - telemetry
-  // - system prompts
 }
 
 /**
@@ -62,4 +56,3 @@ export const DEFAULT_CONFIG: Config = {
     insertSpaces: true,
   },
 }
-

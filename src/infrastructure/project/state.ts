@@ -1,7 +1,7 @@
 import { lazy } from "@/util/lazy.ts"
 import type { ProjectInfo } from "./project.ts"
-import type { Config } from "@/config/index.ts"
-import { ProjectStorage } from "@/storage/index.ts"
+import type { Config } from "@/infrastructure/config/index.ts"
+import { ProjectStorage } from "@/infrastructure/persistence/index.ts"
 
 /**
  * The complete state available within a project scope.

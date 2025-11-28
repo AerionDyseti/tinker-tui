@@ -1,6 +1,6 @@
-import { detectProject } from "@/project/project.ts"
-import { createProjectState, type ProjectState } from "@/project/state.ts"
-import { DEFAULT_CONFIG, type Config } from "@/config/index.ts"
+import { detectProject } from "@/infrastructure/project/project.ts"
+import { createProjectState, type ProjectState } from "@/infrastructure/project/state.ts"
+import { DEFAULT_CONFIG, type Config } from "./types.ts"
 import type { InstanceState } from "./types.ts"
 
 /**
@@ -102,4 +102,5 @@ export const Instance = {
 }
 
 // Re-export types
-export type { InstanceState } from "./types.ts"
+export type { InstanceState, Config, ProviderConfig } from "./types.ts"
+export { DEFAULT_CONFIG } from "./types.ts"

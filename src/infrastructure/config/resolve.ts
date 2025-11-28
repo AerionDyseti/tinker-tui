@@ -1,4 +1,4 @@
-import type { Config } from "./types.ts"
+import type { Config } from "./config-types.ts"
 
 /**
  * Deep merge two objects. Source values override target values.

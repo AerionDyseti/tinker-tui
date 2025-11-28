@@ -1,5 +1,5 @@
 import { test, expect, beforeAll } from "bun:test"
-import { MiniLMEmbedder, getDefaultEmbedder } from "@/embedding/index.ts"
+import { MiniLMEmbedder, getDefaultEmbedder } from "@/infrastructure/embedding/index.ts"
 
 // Note: First run downloads the model (~23MB), subsequent runs use cache
 
@@ -18,18 +18,13 @@ test("embeds a single text", async () => {
   const result = await embedder.embed("Hello, world!")
 
   expect(result.vector).toHaveLength(384)
-  expect(result.embedder).toBe("minilm-l6-v2")
-  expect(result.createdAt).toBeGreaterThan(0)
+  expect(result.model).toBe("Xenova/all-MiniLM-L6-v2")
+  expect(result.dimensions).toBe(384)
+  expect(result.createdAt).toBeInstanceOf(Date)
 
   // Vector should be normalized (L2 norm ≈ 1)
   const norm = Math.sqrt(result.vector.reduce((sum, v) => sum + v * v, 0))
   expect(norm).toBeCloseTo(1, 2)
-})
-
-test("embeds with type metadata", async () => {
-  const result = await embedder.embed("Test message", "message")
-
-  expect(result.type).toBe("message")
 })
 
 test("embeds batch of texts", async () => {
@@ -40,7 +35,8 @@ test("embeds batch of texts", async () => {
 
   for (const result of results) {
     expect(result.vector).toHaveLength(384)
-    expect(result.embedder).toBe("minilm-l6-v2")
+    expect(result.model).toBe("Xenova/all-MiniLM-L6-v2")
+    expect(result.dimensions).toBe(384)
   }
 })
 

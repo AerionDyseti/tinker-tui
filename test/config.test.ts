@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test"
-import { resolveConfig, DEFAULT_CONFIG, type Config } from "@/config/index.ts"
+import { resolveConfig } from "@/infrastructure/config/resolve.ts"
+import { DEFAULT_CONFIG, type Config } from "@/infrastructure/config/index.ts"
 
 test("resolveConfig merges partial config over defaults", () => {
   const base: Config = DEFAULT_CONFIG

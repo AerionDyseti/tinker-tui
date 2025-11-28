@@ -1,5 +1,5 @@
 import { test, expect, beforeEach } from "bun:test"
-import { Instance } from "@/instance/index.ts"
+import { Instance } from "@/infrastructure/config/index.ts"
 
 beforeEach(() => {
   Instance.reset()
