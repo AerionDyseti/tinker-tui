@@ -86,6 +86,13 @@ export class ConversationService {
   }
 
   /**
+   * Get provider info for display purposes.
+   */
+  get providerInfo(): Provider["info"] {
+    return this.provider.info
+  }
+
+  /**
    * Get the current messages in the session.
    */
   get currentMessages(): readonly Message[] {
