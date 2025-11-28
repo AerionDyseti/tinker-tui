@@ -9,7 +9,8 @@
     "dev": "bun run index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "debug-server": "bun run src/tools/debug-server.ts"
+    "debug-server": "bun run src/tools/debug-server.ts",
+    "chat": "bun run src/cli/poc.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

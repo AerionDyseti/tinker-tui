@@ -2,22 +2,21 @@
 /**
  * Debug Server — A mock LLM endpoint for testing providers.
  *
- * Run in a separate terminal:
- *   bun run debug-server
+ * Usage:
+ *   bun run debug-server           # Formatted output (default)
+ *   bun run debug-server --raw     # Raw JSON output
  *
- * Supports two modes:
+ * Endpoints:
+ *   POST /complete            - Native DebugProvider format
+ *   POST /v1/chat/completions - OpenAI-compatible format (SSE)
+ *   GET  /health              - Health check
  *
- * 1. Native mode (DebugProvider):
- *    POST /complete — Custom format for DebugProvider
- *
- * 2. OpenAI-compatible mode (OpenRouterProvider, etc.):
- *    POST /v1/chat/completions — Real OpenAI format
- *    Configure provider with: baseUrl: "http://localhost:7331/v1"
- *
- * Both modes:
- * - Pretty-print the received payload
- * - Prompt for manual response
- * - Return properly formatted response
+ * To test OpenRouterProvider against this server:
+ *   const provider = new OpenRouterProvider({
+ *     apiKey: "fake",
+ *     model: "test",
+ *     baseUrl: "http://localhost:7331/v1",
+ *   })
  */
 
 import * as readline from "readline"
@@ -26,21 +25,7 @@ const DEFAULT_PORT = 7331
 
 // Parse CLI flags
 const args = process.argv.slice(2)
-let rawJson = args.includes("--raw") || args.includes("--rawJson")
-
-/**
- * Setup keypress listener for toggling display mode.
- * Uses Shift+Tab to toggle, which won't interfere with normal typing.
- */
-function setupKeypressToggle() {
-  process.stdin.on("data", (key) => {
-    // Shift+Tab is typically sent as escape sequence: \x1b[Z
-    if (key.toString() === "\x1b[Z") {
-      rawJson = !rawJson
-      console.log(c("yellow", `\n[Display mode: ${rawJson ? "RAW JSON" : "FORMATTED"}]\n`))
-    }
-  })
-}
+const rawJson = args.includes("--raw") || args.includes("--rawJson")
 
 // ANSI colors for pretty output
 const colors = {
@@ -347,7 +332,7 @@ async function main() {
 
   console.log(c("bold", `\n🔧 Debug Server starting on port ${port}`))
   console.log(c("dim", "   Waiting for requests from tinker-tui..."))
-  console.log(c("dim", "   Press Shift+Tab to toggle JSON/formatted view\n"))
+  console.log(c("dim", `   Display mode: ${rawJson ? "RAW JSON" : "FORMATTED"} (use --raw flag to change)\n`))
 
   const server = Bun.serve({
     port,
@@ -437,14 +422,9 @@ async function main() {
   })
 
   console.log(c("green", `✓ Listening on http://localhost:${server.port}`))
-  console.log(c("dim", `  Display mode: ${rawJson ? "RAW JSON" : "FORMATTED"}`))
   console.log(c("dim", "  POST /complete            - Native DebugProvider format"))
   console.log(c("dim", "  POST /v1/chat/completions - OpenAI-compatible format"))
-  console.log(c("dim", "  GET  /health              - Health check"))
-  console.log(c("dim", "\nShift+Tab to toggle display mode\n"))
-
-  // Setup keyboard shortcuts (after server is ready)
-  setupKeypressToggle()
+  console.log(c("dim", "  GET  /health              - Health check\n"))
 }
 
 main().catch(console.error)
