@@ -1,7 +1,8 @@
 /**
  * Message role in a conversation.
+ * Flexible string to support various APIs and custom roles (e.g., "memory").
  */
-export type MessageRole = "user" | "assistant" | "system"
+export type MessageRole = string
 
 /**
  * A conversation session.
