@@ -1,11 +1,7 @@
 import { lazy } from "@/util/lazy.ts"
 import type { ProjectInfo } from "./project.ts"
 import type { Config } from "@/config/index.ts"
-
-/** Storage handle for this project (could be SQLite, JSON, etc.) */
-export interface ProjectStorage {
-  // TODO: Define interface when we build the storage system
-}
+import { ProjectStorage } from "@/storage/index.ts"
 
 /**
  * The complete state available within a project scope.
@@ -18,7 +14,7 @@ export interface ProjectState {
   /** Project configuration (partial overrides) */
   config: () => Promise<Partial<Config>>
 
-  /** Project storage */
+  /** Project storage (sessions, messages) */
   storage: () => Promise<ProjectStorage>
 }
 
@@ -38,8 +34,7 @@ export function createProjectState(info: ProjectInfo): ProjectState {
 
     // Lazy storage initialization
     storage: lazy(async () => {
-      // TODO: Initialize storage backend
-      return {} as ProjectStorage
+      return ProjectStorage.open(info.root)
     }),
   }
 }
