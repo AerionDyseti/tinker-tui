@@ -1,20 +1,46 @@
 #!/usr/bin/env bun
 /**
- * Debug Server — A mock LLM endpoint for testing context assembly.
+ * Debug Server — A mock LLM endpoint for testing providers.
  *
  * Run in a separate terminal:
- *   bun run src/tools/debug-server.ts
+ *   bun run debug-server
  *
- * The server:
- * 1. Receives POST /complete with context JSON
- * 2. Pretty-prints the context to the console
- * 3. Prompts for a manual response
- * 4. Returns the typed response
+ * Supports two modes:
+ *
+ * 1. Native mode (DebugProvider):
+ *    POST /complete — Custom format for DebugProvider
+ *
+ * 2. OpenAI-compatible mode (OpenRouterProvider, etc.):
+ *    POST /v1/chat/completions — Real OpenAI format
+ *    Configure provider with: baseUrl: "http://localhost:7331/v1"
+ *
+ * Both modes:
+ * - Pretty-print the received payload
+ * - Prompt for manual response
+ * - Return properly formatted response
  */
 
 import * as readline from "readline"
 
 const DEFAULT_PORT = 7331
+
+// Parse CLI flags
+const args = process.argv.slice(2)
+let rawJson = args.includes("--raw") || args.includes("--rawJson")
+
+/**
+ * Setup keypress listener for toggling display mode.
+ * Uses Shift+Tab to toggle, which won't interfere with normal typing.
+ */
+function setupKeypressToggle() {
+  process.stdin.on("data", (key) => {
+    // Shift+Tab is typically sent as escape sequence: \x1b[Z
+    if (key.toString() === "\x1b[Z") {
+      rawJson = !rawJson
+      console.log(c("yellow", `\n[Display mode: ${rawJson ? "RAW JSON" : "FORMATTED"}]\n`))
+    }
+  })
+}
 
 // ANSI colors for pretty output
 const colors = {
@@ -31,7 +57,7 @@ const colors = {
 
 const c = (color: keyof typeof colors, text: string) => `${colors[color]}${text}${colors.reset}`
 
-/** Context item shape from the provider */
+/** Context item shape from DebugProvider */
 interface ContextItemData {
   type: string
   content: string
@@ -42,8 +68,8 @@ interface ContextItemData {
   }
 }
 
-/** Request body shape */
-interface RequestBody {
+/** Request body shape for DebugProvider */
+interface NativeRequestBody {
   systemPrompt?: string
   items?: ContextItemData[]
   budget?: {
@@ -56,6 +82,34 @@ interface RequestBody {
     maxTokens?: number
     temperature?: number
   }
+}
+
+/** OpenAI message format */
+interface OpenAIMessage {
+  role: "system" | "user" | "assistant" | "tool"
+  content: string | null
+  name?: string
+  tool_calls?: Array<{
+    id: string
+    type: "function"
+    function: { name: string; arguments: string }
+  }>
+  tool_call_id?: string
+}
+
+/** OpenAI chat completion request */
+interface OpenAIRequest {
+  model: string
+  messages: OpenAIMessage[]
+  stream?: boolean
+  max_tokens?: number
+  temperature?: number
+  top_p?: number
+  stop?: string[]
+  tools?: Array<{
+    type: "function"
+    function: { name: string; description: string; parameters: unknown }
+  }>
 }
 
 /**
@@ -84,11 +138,11 @@ function formatContextItem(item: ContextItemData): string {
 }
 
 /**
- * Pretty-print the received context.
+ * Pretty-print native DebugProvider context.
  */
-function printContext(body: RequestBody): void {
+function printNativeContext(body: NativeRequestBody): void {
   console.log("\n" + c("bold", "═".repeat(60)))
-  console.log(c("bold", " CONTEXT RECEIVED"))
+  console.log(c("bold", " CONTEXT RECEIVED (Native Format)"))
   console.log(c("bold", "═".repeat(60)))
 
   // System prompt
@@ -139,6 +193,124 @@ function printContext(body: RequestBody): void {
 }
 
 /**
+ * Pretty-print OpenAI-format request.
+ */
+function printOpenAIRequest(body: OpenAIRequest): void {
+  console.log("\n" + c("bold", "═".repeat(60)))
+  console.log(c("bold", " OPENAI REQUEST RECEIVED"))
+  console.log(c("bold", "═".repeat(60)))
+
+  // Model info
+  console.log(c("magenta", `\n[Model] ${body.model}`))
+
+  // Options
+  const opts: string[] = []
+  if (body.stream) opts.push("stream=true")
+  if (body.max_tokens) opts.push(`max_tokens=${body.max_tokens}`)
+  if (body.temperature) opts.push(`temperature=${body.temperature}`)
+  if (body.top_p) opts.push(`top_p=${body.top_p}`)
+  if (opts.length > 0) {
+    console.log(c("gray", `[Options] ${opts.join(", ")}`))
+  }
+
+  // Tools
+  if (body.tools && body.tools.length > 0) {
+    console.log(c("blue", `\n[Tools] (${body.tools.length} defined)`))
+    for (const tool of body.tools) {
+      console.log(c("dim", `  - ${tool.function.name}: ${tool.function.description.slice(0, 60)}...`))
+    }
+  }
+
+  // Messages
+  console.log(c("cyan", `\n[Messages] (${body.messages.length} total)`))
+  for (const msg of body.messages) {
+    const roleColor = {
+      system: "yellow",
+      user: "cyan",
+      assistant: "green",
+      tool: "blue",
+    }[msg.role] ?? "gray"
+
+    const prefix = c(roleColor as keyof typeof colors, `[${msg.role}]`)
+
+    // Handle different message types
+    if (msg.tool_calls) {
+      console.log(`  ${prefix} ${c("dim", "[tool_calls]")}`)
+      for (const tc of msg.tool_calls) {
+        console.log(c("dim", `    → ${tc.function.name}(${tc.function.arguments.slice(0, 50)}...)`))
+      }
+    } else if (msg.tool_call_id) {
+      console.log(`  ${prefix} ${c("dim", `[tool_call_id: ${msg.tool_call_id}]`)}`)
+      const content = msg.content?.slice(0, 100) ?? ""
+      console.log(c("dim", `    ${content}`))
+    } else {
+      const content = msg.content ?? ""
+      const truncated = content.length > 150 ? content.slice(0, 150) + "..." : content
+      // Handle multiline
+      const firstLine = truncated.split("\n")[0]
+      console.log(`  ${prefix} ${firstLine}`)
+      if (truncated.includes("\n")) {
+        console.log(c("dim", "    (multiline content)"))
+      }
+    }
+  }
+
+  console.log(c("bold", "\n" + "─".repeat(60)))
+}
+
+/**
+ * Create SSE stream response for OpenAI format.
+ */
+function createSSEStream(content: string): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  const chunks = content.split(" ") // Simple word-by-word streaming
+
+  return new ReadableStream({
+    async start(controller) {
+      // Send content chunks
+      for (let i = 0; i < chunks.length; i++) {
+        const text = i === 0 ? chunks[i] : " " + chunks[i]
+        const chunk = {
+          id: "debug-" + Date.now(),
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: "debug",
+          choices: [{
+            index: 0,
+            delta: { content: text },
+            finish_reason: null,
+          }],
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+        // Small delay for realistic streaming feel
+        await new Promise((r) => setTimeout(r, 20))
+      }
+
+      // Send final chunk with finish_reason
+      const finalChunk = {
+        id: "debug-" + Date.now(),
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: "debug",
+        choices: [{
+          index: 0,
+          delta: {},
+          finish_reason: "stop",
+        }],
+        usage: {
+          prompt_tokens: 0,
+          completion_tokens: Math.ceil(content.length / 4),
+          total_tokens: Math.ceil(content.length / 4),
+        },
+      }
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`))
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"))
+      controller.close()
+    },
+  })
+}
+
+/**
  * Prompt for user input via readline.
  */
 async function promptForResponse(): Promise<string> {
@@ -174,7 +346,8 @@ async function main() {
   const port = parseInt(process.env.PORT ?? String(DEFAULT_PORT))
 
   console.log(c("bold", `\n🔧 Debug Server starting on port ${port}`))
-  console.log(c("dim", "   Waiting for requests from tinker-tui...\n"))
+  console.log(c("dim", "   Waiting for requests from tinker-tui..."))
+  console.log(c("dim", "   Press Shift+Tab to toggle JSON/formatted view\n"))
 
   const server = Bun.serve({
     port,
@@ -186,13 +359,21 @@ async function main() {
         return new Response("ok")
       }
 
-      // Complete endpoint
+      // Native DebugProvider endpoint
       if (url.pathname === "/complete" && req.method === "POST") {
         try {
-          const body = (await req.json()) as RequestBody
+          const body = (await req.json()) as NativeRequestBody
 
           // Print the context
-          printContext(body)
+          if (rawJson) {
+            console.log("\n" + c("bold", "═".repeat(60)))
+            console.log(c("bold", " RAW JSON (Native)"))
+            console.log(c("bold", "═".repeat(60)))
+            console.log(JSON.stringify(body, null, 2))
+            console.log(c("bold", "─".repeat(60)))
+          } else {
+            printNativeContext(body)
+          }
 
           // Prompt for response
           const response = await promptForResponse()
@@ -213,13 +394,57 @@ async function main() {
         }
       }
 
+      // OpenAI-compatible endpoint (for OpenRouterProvider, etc.)
+      if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
+        try {
+          const body = (await req.json()) as OpenAIRequest
+
+          // Print the OpenAI request
+          if (rawJson) {
+            console.log("\n" + c("bold", "═".repeat(60)))
+            console.log(c("bold", " RAW JSON (OpenAI Format)"))
+            console.log(c("bold", "═".repeat(60)))
+            console.log(JSON.stringify(body, null, 2))
+            console.log(c("bold", "─".repeat(60)))
+          } else {
+            printOpenAIRequest(body)
+          }
+
+          // Prompt for response
+          const response = await promptForResponse()
+
+          console.log(c("dim", `\n← Sending SSE response (${response.length} chars)\n`))
+
+          // Return SSE stream
+          return new Response(createSSEStream(response), {
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+            },
+          })
+        } catch (err) {
+          console.error("Error processing OpenAI request:", err)
+          return Response.json(
+            { error: { message: "Error processing request", type: "server_error" } },
+            { status: 500 }
+          )
+        }
+      }
+
       return new Response("Not found", { status: 404 })
     },
   })
 
   console.log(c("green", `✓ Listening on http://localhost:${server.port}`))
-  console.log(c("dim", "  POST /complete - Send context, get response"))
-  console.log(c("dim", "  GET /health    - Health check\n"))
+  console.log(c("dim", `  Display mode: ${rawJson ? "RAW JSON" : "FORMATTED"}`))
+  console.log(c("dim", "  POST /complete            - Native DebugProvider format"))
+  console.log(c("dim", "  POST /v1/chat/completions - OpenAI-compatible format"))
+  console.log(c("dim", "  GET  /health              - Health check"))
+  console.log(c("dim", "\nShift+Tab to toggle display mode\n"))
+
+  // Setup keyboard shortcuts (after server is ready)
+  setupKeypressToggle()
 }
 
 main().catch(console.error)

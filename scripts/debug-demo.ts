@@ -1,14 +1,19 @@
 #!/usr/bin/env bun
 /**
- * Demo script showing how to use the DebugProvider.
+ * Demo script showing how to use providers with the debug server.
  *
  * Run in TWO terminals:
  *   Terminal 1: bun run debug-server
- *   Terminal 2: bun run scripts/debug-demo.ts
+ *   Terminal 2: bun run scripts/debug-demo.ts [native|openrouter]
+ *
+ * Modes:
+ *   native     - Use DebugProvider (default)
+ *   openrouter - Use real OpenRouterProvider pointed at debug server
  */
 
-import { DebugProvider } from "@/infrastructure/provider/index.ts"
+import { DebugProvider, OpenRouterProvider } from "@/infrastructure/provider/index.ts"
 import { ContextAssembler } from "@/infrastructure/context/index.ts"
+import type { Provider } from "@/domain/provider.ts"
 import type { Message } from "@/domain/session.ts"
 import type { Embedding } from "@/domain/shared.ts"
 
@@ -54,8 +59,11 @@ const messages: Message[] = [
 ]
 
 async function main() {
+  const mode = process.argv[2] ?? "native"
+
   console.log("🧪 Debug Provider Demo")
   console.log("=".repeat(40))
+  console.log(`Mode: ${mode}`)
 
   // Assemble context
   const assembler = new ContextAssembler()
@@ -68,19 +76,41 @@ async function main() {
   console.log(`\nAssembled context with ${context.items.length} messages`)
   console.log(`Tokens used: ${context.budget.used}/${context.budget.total}`)
 
-  // Create debug provider and send
-  const provider = new DebugProvider()
+  // Create provider based on mode
+  let provider: Provider
+
+  if (mode === "openrouter") {
+    // Use REAL OpenRouterProvider, but pointed at our debug server
+    provider = new OpenRouterProvider({
+      apiKey: "fake-key-for-debug",
+      model: "debug/test-model",
+      baseUrl: "http://localhost:7331/v1", // ← debug server!
+    })
+    console.log("\nUsing OpenRouterProvider → debug server")
+    console.log("(This tests the REAL provider code path)")
+  } else {
+    // Native DebugProvider
+    provider = new DebugProvider()
+    console.log("\nUsing DebugProvider (native format)")
+  }
 
   console.log("\nSending to debug server...")
 
   try {
+    let fullResponse = ""
     for await (const chunk of provider.complete(context)) {
       if (chunk.content) {
-        console.log(`\nReceived response: "${chunk.content}"`)
+        fullResponse += chunk.content
+        // Show streaming progress
+        process.stdout.write(chunk.content)
       }
-      if (chunk.usage) {
-        console.log(`Usage: ${chunk.usage.promptTokens} prompt + ${chunk.usage.completionTokens} completion = ${chunk.usage.totalTokens} total`)
+      if (chunk.done && chunk.usage) {
+        console.log(`\n\nUsage: ${chunk.usage.promptTokens} prompt + ${chunk.usage.completionTokens} completion = ${chunk.usage.totalTokens} total`)
       }
+    }
+    if (fullResponse && mode === "native") {
+      // Native mode returns all at once
+      console.log(`\nReceived: "${fullResponse}"`)
     }
   } catch (err) {
     console.error("\n❌ Error:", (err as Error).message)
