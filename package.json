@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "bun run index.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "debug-server": "bun run src/tools/debug-server.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
