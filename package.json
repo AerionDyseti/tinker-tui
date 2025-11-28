@@ -15,6 +15,8 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "@lancedb/lancedb": "^0.22.3",
     "@opentui/solid": "^0.1.50",
     "@types/yargs": "^17.0.35",
     "consola": "^3.4.2",
