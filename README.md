@@ -1,4 +1,4 @@
-# tinker-tui
+# tinker-ui
 
 To install dependencies:
 

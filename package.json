@@ -1,5 +1,5 @@
 {
-  "name": "tinker",
+  "name": "tinker-ui",
   "version": "0.1.0",
   "description": "SillyTavern for coders — a web UI for interacting with coding agents",
   "module": "index.ts",

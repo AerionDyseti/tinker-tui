@@ -95,8 +95,8 @@ export class OpenRouterProvider implements Provider {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.config.apiKey}`,
-        "HTTP-Referer": this.config.siteUrl ?? "https://github.com/tinker-tui",
-        "X-Title": this.config.siteName ?? "tinker-tui",
+        "HTTP-Referer": this.config.siteUrl ?? "https://github.com/tinker-ui",
+        "X-Title": this.config.siteName ?? "tinker-ui",
       },
       body: JSON.stringify(request),
     })

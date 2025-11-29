@@ -331,7 +331,7 @@ async function main() {
   const port = parseInt(process.env.PORT ?? String(DEFAULT_PORT))
 
   console.log(c("bold", `\n🔧 Debug Server starting on port ${port}`))
-  console.log(c("dim", "   Waiting for requests from tinker-tui..."))
+  console.log(c("dim", "   Waiting for requests from tinker-ui..."))
   console.log(c("dim", `   Display mode: ${rawJson ? "RAW JSON" : "FORMATTED"} (use --raw flag to change)\n`))
 
   const server = Bun.serve({
