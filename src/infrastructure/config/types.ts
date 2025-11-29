@@ -17,5 +17,5 @@ export interface InstanceState {
 }
 
 // Re-export config types for convenience
-export type { Config, ProviderConfig } from "./config-types.ts"
+export type { Config, ProviderConfig, LocalRuntime } from "./config-types.ts"
 export { DEFAULT_CONFIG } from "./config-types.ts"

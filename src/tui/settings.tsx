@@ -17,7 +17,7 @@
 import { createSignal, createMemo, For, Show, createEffect } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { theme } from "./theme.ts"
-import type { ProviderConfig } from "@/infrastructure/config/index.ts"
+import type { ProviderConfig, LocalRuntime } from "@/infrastructure/config/index.ts"
 
 // ============================================================================
 // Types
@@ -91,7 +91,7 @@ export function Settings(props: SettingsProps) {
         ? props.currentProviderConfig.baseUrl
         : ""
   )
-  const [runtime, setRuntime] = createSignal<"ollama" | "lmstudio" | "llamacpp" | "other">(
+  const [runtime, setRuntime] = createSignal<LocalRuntime>(
     props.currentProviderConfig.type === "local" ? props.currentProviderConfig.runtime : "ollama"
   )
 

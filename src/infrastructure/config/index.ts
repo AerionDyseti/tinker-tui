@@ -102,6 +102,6 @@ export const Instance = {
 }
 
 // Re-export types
-export type { InstanceState, Config, ProviderConfig } from "./types.ts"
+export type { InstanceState, Config, ProviderConfig, LocalRuntime } from "./types.ts"
 export { DEFAULT_CONFIG } from "./types.ts"
 export { ConfigService } from "./service.ts"

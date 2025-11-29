@@ -154,8 +154,12 @@ export interface ProviderFactory {
 }
 
 /**
- * Provider configuration.
- * This is a simplified version; the full config lives in infrastructure.
+ * Runtime environment for local LLM providers.
+ */
+export type LocalRuntime = "ollama" | "lmstudio" | "llamacpp" | "other"
+
+/**
+ * Provider configuration — discriminated union for type safety.
  */
 export type ProviderConfig =
   | {
@@ -166,10 +170,11 @@ export type ProviderConfig =
       type: "openrouter"
       model: string
       apiKey: string
+      baseUrl?: string
     }
   | {
       type: "local"
       model: string
       baseUrl: string
-      runtime: "ollama" | "llama.cpp" | "vllm"
+      runtime: LocalRuntime
     }

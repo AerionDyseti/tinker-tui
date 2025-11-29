@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "bun --watch run src/tui/index.tsx",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bunx tsc --noEmit",
     "debug-server": "bun run src/tools/debug-server.ts",
     "chat": "bun run src/cli/poc.ts",
     "tui": "bun run src/tui/index.tsx"

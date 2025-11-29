@@ -1,24 +1,6 @@
-/**
- * Provider configuration — discriminated union for type safety.
- */
-export type ProviderConfig =
-  | {
-      type: "claude-code"
-      model: string // e.g., "claude-sonnet-4-20250514"
-      // Uses Claude Code's auth token — no API key needed
-    }
-  | {
-      type: "openrouter"
-      model: string // e.g., "anthropic/claude-3.5-sonnet"
-      apiKey: string // OpenRouter API key
-      baseUrl?: string // defaults to https://openrouter.ai/api/v1
-    }
-  | {
-      type: "local"
-      model: string // e.g., "llama3", "mistral"
-      baseUrl: string // e.g., "http://localhost:11434"
-      runtime: "ollama" | "lmstudio" | "llamacpp" | "other"
-    }
+// ProviderConfig is defined in domain layer — re-export for config convenience
+export type { ProviderConfig, LocalRuntime } from "@/domain/provider.ts"
+import type { ProviderConfig } from "@/domain/provider.ts"
 
 /**
  * Config — the complete configuration shape.
