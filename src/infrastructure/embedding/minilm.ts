@@ -25,6 +25,7 @@ export class MiniLMEmbedder implements Embedder {
 
     if (!this.initPromise) {
       this.initPromise = (async () => {
+        // @ts-expect-error - pipeline() returns complex union type that TS can't represent
         this.pipeline = await pipeline("feature-extraction", MODEL_NAME, {
           dtype: "fp32",
         })

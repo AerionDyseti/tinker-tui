@@ -1,12 +1,13 @@
 {
   "compilerOptions": {
-    // Environment setup & latest features
-    "lib": ["ESNext"],
+    // Environment - includes DOM for web APIs
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
-    "jsx": "preserve",
-    "jsxImportSource": "@opentui/solid",
+
+    // React JSX
+    "jsx": "react-jsx",
     "allowJs": true,
 
     // Bundler mode
@@ -22,7 +23,7 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
 
-    // Some stricter flags (disabled by default)
+    // Relaxed flags
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
@@ -33,6 +34,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*", "index.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules"]
 }
