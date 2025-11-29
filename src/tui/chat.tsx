@@ -12,6 +12,7 @@ import { createSignal, For } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import type { ConversationService } from "@/application/index.ts"
 import { theme, chatColors } from "./theme.ts"
+import { TinkerTextInput } from "./shared/tinker-text-input.tsx"
 
 /** A message in the chat history */
 interface ChatMessage {
@@ -32,6 +33,10 @@ export function Chat(props: ChatProps) {
   const [isStreaming, setIsStreaming] = createSignal(false)
   const [statusText, setStatusText] = createSignal("")
   const dimensions = useTerminalDimensions()
+
+  // NOTE: We previously had an explicit Ctrl+V handler here that read from
+  // the system clipboard. For now we're relying on terminal bracketed paste
+  // and the input's onPaste handler instead.
 
   /** Process a chat message or command */
   async function handleSubmit(value: string) {
@@ -124,7 +129,7 @@ export function Chat(props: ChatProps) {
 
   // Calculate layout dimensions
   const headerHeight = 3
-  const inputHeight = 3
+  const inputHeight = 6 // accommodate a 4-row TinkerTextInput plus borders
   const statusHeight = 1
   const messagesHeight = () =>
     Math.max(1, dimensions().height - headerHeight - inputHeight - statusHeight)
@@ -196,16 +201,24 @@ export function Chat(props: ChatProps) {
         paddingLeft={1}
         paddingRight={1}
       >
-        <input
-          placeholder={isStreaming() ? "Waiting for response..." : "Type a message..."}
+        <TinkerTextInput
           value={input()}
-          onInput={(value: string) => setInput(value)}
-          onSubmit={handleSubmit}
-          focusedBackgroundColor={theme.backgroundPanel}
-          backgroundColor={theme.background}
+          onChange={setInput}
+          maxChars={4096}
+          stripNewlines={false}
+          minHeight={4}
+          maxHeight={4}
+          placeholder={isStreaming() ? "Waiting for response..." : "Type a message..."}
           textColor={theme.text}
+          focusedTextColor={theme.text}
+          backgroundColor={theme.background}
+          focusedBackgroundColor={theme.backgroundPanel}
           placeholderColor={theme.textMuted}
           focused
+          // Submit on Enter when not streaming; let the textarea handle the
+          // actual key events via onContentChange and chat's keyboard handler.
+          // For now, we keep submission logic in handleSubmit and keyboard in
+          // the surrounding TUI.
         />
       </box>
     </box>

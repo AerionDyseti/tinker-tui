@@ -11,7 +11,8 @@
     "typecheck": "bunx tsc --noEmit",
     "debug-server": "bun run src/tools/debug-server.ts",
     "chat": "bun run src/cli/poc.ts",
-    "tui": "bun run src/tui/index.tsx"
+    "tui": "bun run src/tui/index.tsx",
+    "sandbox": "bun run src/tui/sandbox.tsx"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -16,26 +16,18 @@
 
 import { createSignal, createMemo, For, Show, createEffect } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
-import { theme } from "./theme.ts"
+import { theme } from "../theme.ts"
 import type { ProviderConfig, LocalRuntime } from "@/infrastructure/config/index.ts"
+import type { FieldDefinition } from "./types.ts"
+import { TextRowControl } from "./text-row.tsx"
+import { SelectRowControl } from "./select-row.tsx"
+// import { Clipboard } from "@/util/clipboard.ts" // Temporarily unused while relying on bracketed paste
 
 // ============================================================================
 // Types
 // ============================================================================
 
 type ProviderType = ProviderConfig["type"]
-
-type FieldType = "select" | "text"
-
-interface FieldDefinition {
-  id: string
-  label: string
-  type: FieldType
-  options?: { label: string; value: string }[] // For select fields
-  placeholder?: string // For text fields
-  getValue: () => string
-  setValue: (value: string) => void
-}
 
 // ============================================================================
 // Constants
@@ -266,17 +258,23 @@ export function Settings(props: SettingsProps) {
 
   // ─── Keyboard Navigation ─────────────────────────────────────────────────
 
-  useKeyboard((key) => {
+  useKeyboard(async (key) => {
     if (key.defaultPrevented) return
 
-    // Text input mode - only handle escape, let input handle everything else
+    // Text input mode - handle escape/enter here; bracketed paste is handled
+    // via the inline input's onPaste handler in TextRowControl.
     if (editingField()) {
       if (key.name === "escape") {
         finishTextEdit(false)
         key.preventDefault?.()
         return
       }
-      // Let the input handle all other keys (including return via onSubmit)
+      if (key.name === "return") {
+        finishTextEdit(true)
+        key.preventDefault?.()
+        return
+      }
+      // Let the input handle all other keys
       return
     }
 
@@ -367,85 +365,30 @@ export function Settings(props: SettingsProps) {
               const isSelected = () => index() === selectedIndex()
               const isEditing = () => editingField() === field.id
 
-              return (
-                <box flexDirection="column">
-                  <box
-                    flexDirection="row"
-                    justifyContent="space-between"
-                    paddingLeft={1}
-                    paddingRight={1}
-                    backgroundColor={isSelected() && !isEditing() ? theme.accent : undefined}
-                  >
-                    <text
-                      fg={isSelected() && !isEditing() ? theme.textOnAccent : theme.text}
-                      attributes={isSelected() ? 1 : 0}
-                    >
-                      {field.label}
-                    </text>
-                    <Show when={!isEditing()}>
-                      <text fg={isSelected() ? theme.accentMuted : theme.textMuted}>
-                        {field.getValue()}
-                        {field.type === "select" ? " ▼" : ""}
-                      </text>
-                    </Show>
-                  </box>
-                  {/* Inline text input when editing */}
-                  <Show when={isEditing()}>
-                    <box paddingLeft={2} paddingRight={2} height={3} borderStyle="single" borderColor={theme.borderFocus}>
-                      <input
-                        placeholder={field.placeholder}
-                        onInput={setTextInputValue}
-                        onSubmit={() => finishTextEdit(true)}
-                        focused
-                      />
-                    </box>
-                  </Show>
-                </box>
+              return field.type === "text" ? (
+                <TextRowControl
+                  label={field.label}
+                  value={field.getValue()}
+                  editValue={textInputValue()}
+                  placeholder={field.placeholder}
+                  isSelected={isSelected()}
+                  isEditing={isEditing()}
+                  onTextInput={setTextInputValue}
+                />
+              ) : (
+                <SelectRowControl
+                  label={field.label}
+                  value={field.getValue()}
+                  isSelected={isSelected()}
+                  dialogOpen={dialogOpen()}
+                  options={dialogOptions()}
+                  selectedIndex={dialogSelectedIndex()}
+                />
               )
             }}
           </For>
         </box>
       </box>
-
-      {/* Selection Dialog Overlay */}
-      <Show when={dialogOpen()}>
-        <box
-          position="absolute"
-          top={6}
-          left={4}
-          width={50}
-          borderStyle="rounded"
-          borderColor={theme.accent}
-          backgroundColor={theme.backgroundPanel}
-          flexDirection="column"
-          paddingTop={1}
-          paddingBottom={1}
-        >
-          <text fg={theme.accent} attributes={1} paddingLeft={1} paddingBottom={1}>
-            Select Option
-          </text>
-          <For each={dialogOptions()}>
-            {(option, index) => {
-              const isSelected = () => index() === dialogSelectedIndex()
-              return (
-                <box
-                  flexDirection="row"
-                  paddingLeft={1}
-                  paddingRight={1}
-                  backgroundColor={isSelected() ? theme.accent : undefined}
-                >
-                  <text fg={isSelected() ? theme.textOnAccent : theme.text} attributes={isSelected() ? 1 : 0}>
-                    {option.label}
-                  </text>
-                </box>
-              )
-            }}
-          </For>
-          <text fg={theme.textMuted} paddingLeft={1} paddingTop={1}>
-            ↑↓ Navigate | Enter Select | ESC Cancel
-          </text>
-        </box>
-      </Show>
 
       {/* Footer */}
       <box position="absolute" bottom={0} left={0} right={0} height={1} paddingLeft={1}>

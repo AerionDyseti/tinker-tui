@@ -13,7 +13,7 @@
 import { createSignal, Show } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { Chat } from "./chat.tsx"
-import { Settings } from "./settings.tsx"
+import { Settings } from "./settings/index.tsx"
 import type { ConversationService } from "@/application/index.ts"
 import type { ProviderConfig } from "@/infrastructure/config/index.ts"
 
