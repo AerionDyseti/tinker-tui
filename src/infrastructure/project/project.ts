@@ -1,22 +1,31 @@
 import { $ } from "bun"
 import * as path from "node:path"
+import type { Project } from "@/domain/project.ts"
 
-export interface ProjectInfo {
-  /** Absolute path to project root (git root or provided directory) */
-  root: string
-  /** Project name (directory name) */
-  name: string
-  /** Whether this is a git repository */
-  isGit: boolean
-  /** Current git branch, if applicable */
-  branch?: string
+// Re-export domain type for convenience
+export type { Project } from "@/domain/project.ts"
+
+/**
+ * @deprecated Use Project from @/domain/project.ts instead.
+ * This alias exists for backward compatibility during migration.
+ */
+export type ProjectInfo = Project
+
+/**
+ * Generate a stable project ID from the root path.
+ * Uses a hash to create a deterministic, filesystem-safe identifier.
+ */
+function generateProjectId(root: string): string {
+  const hash = new Bun.CryptoHasher("sha256")
+  hash.update(root)
+  return hash.digest("hex").slice(0, 16)
 }
 
 /**
- * Detect project info from a directory.
+ * Detect project from a directory.
  * Walks up to find git root, falls back to the provided directory.
  */
-export async function detectProject(directory: string): Promise<ProjectInfo> {
+export async function detectProject(directory: string): Promise<Project> {
   const absoluteDir = path.resolve(directory)
 
   // Try to find git root
@@ -25,18 +34,20 @@ export async function detectProject(directory: string): Promise<ProjectInfo> {
   if (gitRoot) {
     const branch = await getCurrentBranch(gitRoot)
     return {
+      id: generateProjectId(gitRoot),
       root: gitRoot,
       name: path.basename(gitRoot),
-      isGit: true,
-      branch: branch ?? undefined,
+      git: {
+        branch: branch ?? undefined,
+      },
     }
   }
 
   // No git repo — use the provided directory
   return {
+    id: generateProjectId(absoluteDir),
     root: absoluteDir,
     name: path.basename(absoluteDir),
-    isGit: false,
   }
 }
 

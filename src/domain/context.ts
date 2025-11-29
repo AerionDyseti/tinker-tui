@@ -1,5 +1,8 @@
-import type { Message } from "./session.ts"
+import type { SessionEntry } from "./session.ts"
 import type { Knowledge } from "./knowledge.ts"
+
+// Legacy alias
+type Message = SessionEntry
 
 /**
  * Maximum token reservations for different context slots.
@@ -114,7 +117,7 @@ export interface ContextItem {
 
   // Source reference
   source:
-    | { type: "message"; message: Message }
+    | { type: "message"; entry: SessionEntry }
     | { type: "knowledge"; knowledge: Knowledge }
     | { type: "system"; name: string }
     | { type: "tool"; name: string; schema: Record<string, unknown> }
@@ -123,18 +126,18 @@ export interface ContextItem {
 }
 
 /**
- * Strategy for filtering messages before RAG.
- * Different strategies can prioritize recency, pinned messages, etc.
+ * Strategy for filtering entries before RAG.
+ * Different strategies can prioritize recency, pinned entries, etc.
  */
 export interface FilterStrategy {
   name: string
   description: string
 
   /**
-   * Filter and prioritize messages.
-   * Returns messages that should be considered for context.
+   * Filter and prioritize entries.
+   * Returns entries that should be considered for context.
    */
-  filter(messages: Message[], budget: TokenBudget): Message[]
+  filter(entries: SessionEntry[], budget: TokenBudget): SessionEntry[]
 }
 
 /**

@@ -7,11 +7,11 @@ beforeEach(() => {
 
 test("opens a project and sets it as active", async () => {
   // Open the current project (tinker-tui itself)
-  const project = await Instance.openProject(process.cwd())
+  const state = await Instance.openProject(process.cwd())
 
-  expect(project.info.name).toBe("tinker-tui")
-  expect(project.info.isGit).toBe(true)
-  expect(Instance.activeProject).toBe(project)
+  expect(state.project.name).toBe("tinker-tui")
+  expect(state.project.git).toBeDefined()
+  expect(Instance.activeProject).toBe(state)
   expect(Instance.projects.size).toBe(1)
 })
 
@@ -27,7 +27,7 @@ test("can close a project", async () => {
   await Instance.openProject(process.cwd())
   expect(Instance.projects.size).toBe(1)
 
-  Instance.closeProject(Instance.activeProject!.info.root)
+  Instance.closeProject(Instance.activeProject!.project.root)
   expect(Instance.projects.size).toBe(0)
   expect(Instance.activeProject).toBeNull()
 })
@@ -82,16 +82,16 @@ test("loadConfig returns default config", async () => {
 })
 
 test("can switch active project", async () => {
-  const project1 = await Instance.openProject(process.cwd())
+  const state1 = await Instance.openProject(process.cwd())
 
   // Open a second project (parent directory)
   const parentDir = process.cwd() + "/.."
-  const project2 = await Instance.openProject(parentDir)
+  const state2 = await Instance.openProject(parentDir)
 
   expect(Instance.projects.size).toBe(2)
-  expect(Instance.activeProject).toBe(project2)
+  expect(Instance.activeProject).toBe(state2)
 
   // Switch back to first
-  Instance.setActiveProject(project1.info.root)
-  expect(Instance.activeProject).toBe(project1)
+  Instance.setActiveProject(state1.project.root)
+  expect(Instance.activeProject).toBe(state1)
 })

@@ -2,7 +2,7 @@ import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test"
 import { OpenRouterProvider } from "@/infrastructure/provider/index.ts"
 import type { Context, ContextItem } from "@/domain/context.ts"
 import { createTokenBudget } from "@/domain/context.ts"
-import type { Message } from "@/domain/session.ts"
+import type { SessionEntry, EntryKind, UserInput, ToolInvocation } from "@/domain/session.ts"
 import type { Embedding } from "@/domain/shared.ts"
 
 // Helper to create a mock embedding
@@ -15,13 +15,32 @@ function mockEmbedding(): Embedding {
   }
 }
 
-// Helper to create a mock message
-function mockMessage(overrides: Partial<Message> = {}): Message {
+// Helper to create a mock entry
+function mockEntry(overrides: { kind?: EntryKind; content?: string } = {}): SessionEntry {
+  const kind = overrides.kind ?? "user_input"
+  const content = overrides.content ?? "Hello"
+
   return {
-    id: "msg-1",
+    id: "entry-1",
     sessionId: "session-1",
-    type: "user",
-    content: "Hello",
+    kind,
+    content,
+    tokens: 10,
+    embedding: mockEmbedding(),
+    timestamp: new Date(),
+  } as UserInput
+}
+
+// Helper to create a mock tool invocation entry
+function mockToolInvocation(overrides: Partial<ToolInvocation> = {}): ToolInvocation {
+  return {
+    id: "entry-tool-1",
+    sessionId: "session-1",
+    kind: "tool_invocation",
+    toolId: "call_123",
+    toolName: "calculator",
+    input: { expression: "2+2" },
+    status: "pending",
     tokens: 10,
     embedding: mockEmbedding(),
     timestamp: new Date(),
@@ -29,17 +48,30 @@ function mockMessage(overrides: Partial<Message> = {}): Message {
   }
 }
 
-// Helper to create a mock context item from a message
-function messageToContextItem(msg: Message): ContextItem {
+// Helper to create a mock context item from an entry
+function entryToContextItem(entry: SessionEntry): ContextItem {
+  let content = ""
+  if ("content" in entry) {
+    content = entry.content
+  } else if (entry.kind === "tool_invocation") {
+    const tool = entry as ToolInvocation
+    content = tool.result !== undefined
+      ? JSON.stringify(tool.result)
+      : JSON.stringify(tool.input)
+  }
   return {
-    id: msg.id,
+    id: entry.id,
     type: "message",
-    content: msg.content,
-    tokens: msg.tokens,
+    content,
+    tokens: entry.tokens,
     priority: "medium",
-    source: { type: "message", message: msg },
+    source: { type: "message", entry },
   }
 }
+
+// Legacy aliases for tests
+const mockMessage = mockEntry
+const messageToContextItem = entryToContextItem
 
 // Helper to create a minimal context
 function mockContext(items: ContextItem[] = [], systemPrompt?: string): Context {
@@ -106,25 +138,25 @@ describe("OpenRouterProvider", () => {
     })
   })
 
-  describe("translateMessageType", () => {
-    test("maps user to user", () => {
-      expect(provider.translateMessageType("user")).toBe("user")
+  describe("translateEntryKind", () => {
+    test("maps user_input to user", () => {
+      expect(provider.translateEntryKind("user_input")).toBe("user")
     })
 
-    test("maps assistant to assistant", () => {
-      expect(provider.translateMessageType("assistant")).toBe("assistant")
+    test("maps agent_response to assistant", () => {
+      expect(provider.translateEntryKind("agent_response")).toBe("assistant")
     })
 
-    test("maps system to system", () => {
-      expect(provider.translateMessageType("system")).toBe("system")
+    test("maps system_instruction to system", () => {
+      expect(provider.translateEntryKind("system_instruction")).toBe("system")
     })
 
-    test("maps knowledge to system", () => {
-      expect(provider.translateMessageType("knowledge")).toBe("system")
+    test("maps knowledge_reference to system", () => {
+      expect(provider.translateEntryKind("knowledge_reference")).toBe("system")
     })
 
-    test("maps tool_result to tool", () => {
-      expect(provider.translateMessageType("tool_result")).toBe("tool")
+    test("maps tool_invocation to assistant", () => {
+      expect(provider.translateEntryKind("tool_invocation")).toBe("assistant")
     })
   })
 
@@ -155,7 +187,7 @@ describe("OpenRouterProvider", () => {
       }) as typeof fetch
 
       const context = mockContext([
-        messageToContextItem(mockMessage({ type: "user", content: "Hello" })),
+        messageToContextItem(mockMessage({ kind: "user_input", content: "Hello" })),
       ])
 
       const chunks: string[] = []
@@ -200,7 +232,7 @@ describe("OpenRouterProvider", () => {
       }) as typeof fetch
 
       const context = mockContext([
-        messageToContextItem(mockMessage({ type: "user", content: "Hi" })),
+        messageToContextItem(mockMessage({ kind: "user_input", content: "Hi" })),
       ])
 
       const chunks: string[] = []
@@ -275,7 +307,7 @@ describe("OpenRouterProvider", () => {
   })
 
   describe("context conversion", () => {
-    test("converts tool_use messages correctly", async () => {
+    test("converts pending tool_invocation to tool call", async () => {
       let capturedBody: Record<string, unknown> | null = null
 
       globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -285,17 +317,13 @@ describe("OpenRouterProvider", () => {
         ])
       }) as typeof fetch
 
-      const toolUseMsg = mockMessage({
-        type: "tool_use",
-        content: "",
-        metadata: {
-          toolId: "call_123",
-          toolName: "calculator",
-          toolInput: { expression: "2+2" },
-        },
+      // Tool invocation without result = tool call request
+      const toolInvocation = mockToolInvocation({
+        status: "pending",
+        result: undefined,
       })
 
-      const context = mockContext([messageToContextItem(toolUseMsg)])
+      const context = mockContext([entryToContextItem(toolInvocation)])
 
       for await (const _ of provider.complete(context)) {
         // consume
@@ -310,7 +338,7 @@ describe("OpenRouterProvider", () => {
       expect(messages[0].tool_calls?.[0].function.name).toBe("calculator")
     })
 
-    test("converts tool_result messages correctly", async () => {
+    test("converts successful tool_invocation to tool result", async () => {
       let capturedBody: Record<string, unknown> | null = null
 
       globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -320,16 +348,13 @@ describe("OpenRouterProvider", () => {
         ])
       }) as typeof fetch
 
-      const toolResultMsg = mockMessage({
-        type: "tool_result",
-        content: "4",
-        metadata: {
-          toolId: "call_123",
-          toolOutput: "4",
-        },
+      // Tool invocation with result = tool response
+      const toolInvocation = mockToolInvocation({
+        status: "success",
+        result: "4",
       })
 
-      const context = mockContext([messageToContextItem(toolResultMsg)])
+      const context = mockContext([entryToContextItem(toolInvocation)])
 
       for await (const _ of provider.complete(context)) {
         // consume

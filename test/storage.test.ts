@@ -2,6 +2,9 @@ import { test, expect, beforeEach, afterEach } from "bun:test"
 import { ProjectStorage } from "@/infrastructure/persistence/index.ts"
 import { DEFAULT_EMBEDDING_DIMENSIONS, type Embedding } from "@/domain/shared.ts"
 
+// Test project ID for session creation
+const TEST_PROJECT_ID = "test-project-id"
+
 // Helper to generate random embedding vector
 function randomVector(): number[] {
   return Array.from({ length: DEFAULT_EMBEDDING_DIMENSIONS }, () => Math.random())
@@ -40,7 +43,7 @@ afterEach(() => {
 // ─── Sessions ──────────────────────────────────────────────────
 
 test("creates a session", async () => {
-  const session = await storage.createSession("Test Session")
+  const session = await storage.createSession(TEST_PROJECT_ID, "Test Session")
 
   expect(session.id).toBeDefined()
   expect(session.title).toBe("Test Session")
@@ -49,7 +52,7 @@ test("creates a session", async () => {
 })
 
 test("creates session with metadata", async () => {
-  const session = await storage.createSession("With Metadata", {
+  const session = await storage.createSession(TEST_PROJECT_ID, "With Metadata", {
     projectPath: "/test/path",
     provider: "claude",
     model: "claude-3",
@@ -61,7 +64,7 @@ test("creates session with metadata", async () => {
 })
 
 test("gets a session by id", async () => {
-  const created = await storage.createSession("Find Me")
+  const created = await storage.createSession(TEST_PROJECT_ID, "Find Me")
   const found = await storage.getSession(created.id)
 
   expect(found).not.toBeNull()
@@ -74,9 +77,9 @@ test("returns null for non-existent session", async () => {
 })
 
 test("lists sessions sorted by updatedAt", async () => {
-  await storage.createSession("First")
-  await storage.createSession("Second")
-  await storage.createSession("Third")
+  await storage.createSession(TEST_PROJECT_ID, "First")
+  await storage.createSession(TEST_PROJECT_ID, "Second")
+  await storage.createSession(TEST_PROJECT_ID, "Third")
 
   const sessions = await storage.listSessions()
 
@@ -87,7 +90,7 @@ test("lists sessions sorted by updatedAt", async () => {
 })
 
 test("updates session title", async () => {
-  const session = await storage.createSession("Original")
+  const session = await storage.createSession(TEST_PROJECT_ID, "Original")
   const updated = await storage.updateSession(session.id, { title: "Updated" })
 
   expect(updated!.title).toBe("Updated")
@@ -95,64 +98,56 @@ test("updates session title", async () => {
 })
 
 test("deletes a session", async () => {
-  const session = await storage.createSession("To Delete")
+  const session = await storage.createSession(TEST_PROJECT_ID, "To Delete")
   const deleted = await storage.deleteSession(session.id)
 
   expect(deleted).toBe(true)
   expect(await storage.getSession(session.id)).toBeNull()
 })
 
-// ─── Messages ──────────────────────────────────────────────────
+// ─── Entries (Messages) ─────────────────────────────────────────
 
-test("adds a message to a session", async () => {
-  const session = await storage.createSession("Chat")
+test("adds an entry to a session", async () => {
+  const session = await storage.createSession(TEST_PROJECT_ID, "Chat")
   const embedding = createEmbedding()
-  const message = await storage.addMessage(
+  const entry = await storage.addMessage(
     session.id,
-    "user",
+    "user_input",
     "Hello!",
     embedding,
     10 // tokens
   )
 
-  expect(message.id).toBeDefined()
-  expect(message.sessionId).toBe(session.id)
-  expect(message.type).toBe("user")
-  expect(message.content).toBe("Hello!")
-  expect(message.tokens).toBe(10)
-  expect(message.embedding.model).toBe("test-model")
+  expect(entry.id).toBeDefined()
+  expect(entry.sessionId).toBe(session.id)
+  expect(entry.kind).toBe("user_input")
+  expect((entry as { content: string }).content).toBe("Hello!")
+  expect(entry.tokens).toBe(10)
+  expect(entry.embedding.model).toBe("test-model")
 })
 
-test("adds message with metadata", async () => {
-  const session = await storage.createSession("Chat")
+test("adds pinned entry", async () => {
+  const session = await storage.createSession(TEST_PROJECT_ID, "Chat")
   const embedding = createEmbedding()
-  const message = await storage.addMessage(
+  const entry = await storage.addMessage(
     session.id,
-    "tool_result",
-    "Tool output",
+    "agent_response",
+    "Hi there!",
     embedding,
     15,
-    {
-      pinned: true,
-      metadata: {
-        toolId: "tool-123",
-        toolName: "calculator",
-        toolOutput: { result: 42 },
-      },
-    }
+    { pinned: true }
   )
 
-  expect(message.pinned).toBe(true)
-  expect(message.metadata!.toolId).toBe("tool-123")
-  expect(message.metadata!.toolName).toBe("calculator")
+  expect(entry.pinned).toBe(true)
+  expect(entry.kind).toBe("agent_response")
 })
 
-test("gets messages for a session in order", async () => {
-  const session = await storage.createSession("Chat")
+test("gets entries for a session in order", async () => {
+  const session = await storage.createSession(TEST_PROJECT_ID, "Chat")
 
-  await storage.addMessage(session.id, "user", "First", createEmbedding(), 5)
-  await storage.addMessage(session.id, "assistant", "Second", createEmbedding(), 10)
-  await storage.addMessage(session.id, "user", "Third", createEmbedding(), 5)
+  await storage.addMessage(session.id, "user_input", "First", createEmbedding(), 5)
+  await storage.addMessage(session.id, "agent_response", "Second", createEmbedding(), 10)
+  await storage.addMessage(session.id, "user_input", "Third", createEmbedding(), 5)
 
   const messages = await storage.getMessages(session.id)
 
@@ -162,48 +157,48 @@ test("gets messages for a session in order", async () => {
   expect(messages[2].content).toBe("Third")
 })
 
-test("updates message pinned status", async () => {
-  const session = await storage.createSession("Chat")
-  const message = await storage.addMessage(
+test("updates entry pinned status", async () => {
+  const session = await storage.createSession(TEST_PROJECT_ID, "Chat")
+  const entry = await storage.addMessage(
     session.id,
-    "user",
+    "user_input",
     "Test",
     createEmbedding(),
     5
   )
 
-  expect(message.pinned).toBeFalsy()
+  expect(entry.pinned).toBeFalsy()
 
-  const updated = await storage.updateMessage(message.id, { pinned: true })
+  const updated = await storage.updateMessage(entry.id, { pinned: true })
   expect(updated!.pinned).toBe(true)
 })
 
-test("searches messages by vector similarity", async () => {
-  const session = await storage.createSession("Chat")
+test("searches entries by vector similarity", async () => {
+  const session = await storage.createSession(TEST_PROJECT_ID, "Chat")
 
-  // Add messages with embeddings
+  // Add entries with embeddings
   const emb1 = createEmbedding()
   const emb2 = createEmbedding()
-  await storage.addMessage(session.id, "user", "About TypeScript", emb1, 10)
-  await storage.addMessage(session.id, "assistant", "About JavaScript", emb2, 15)
+  await storage.addMessage(session.id, "user_input", "About TypeScript", emb1, 10)
+  await storage.addMessage(session.id, "agent_response", "About JavaScript", emb2, 15)
 
   // Search with emb1's vector - should find "About TypeScript" as closer
   const results = await storage.searchMessages(emb1.vector, 2)
 
   expect(results).toHaveLength(2)
-  expect(results[0].item.content).toBe("About TypeScript")
+  expect((results[0].item as { content: string }).content).toBe("About TypeScript")
   expect(results[0].distance).toBeLessThan(results[1].distance)
 })
 
-test("deleting session deletes its messages", async () => {
-  const session = await storage.createSession("Chat")
-  await storage.addMessage(session.id, "user", "Message 1", createEmbedding(), 5)
-  await storage.addMessage(session.id, "user", "Message 2", createEmbedding(), 5)
+test("deleting session deletes its entries", async () => {
+  const session = await storage.createSession(TEST_PROJECT_ID, "Chat")
+  await storage.addMessage(session.id, "user_input", "Message 1", createEmbedding(), 5)
+  await storage.addMessage(session.id, "user_input", "Message 2", createEmbedding(), 5)
 
   await storage.deleteSession(session.id)
 
-  const messages = await storage.getMessages(session.id)
-  expect(messages).toHaveLength(0)
+  const entries = await storage.getMessages(session.id)
+  expect(entries).toHaveLength(0)
 })
 
 // ─── Knowledge ─────────────────────────────────────────────────
@@ -271,9 +266,7 @@ test("updates knowledge content", async () => {
   expect(updated!.updatedAt.getTime()).toBeGreaterThan(knowledge.updatedAt.getTime())
 })
 
-// NOTE: LanceDB has limitations with updating array/List type columns directly
-// Tags updates may require a delete+re-add pattern for now
-test.skip("updates knowledge tags (known LanceDB limitation)", async () => {
+test("updates knowledge tags", async () => {
   const emb = createEmbedding()
   const knowledge = await storage.addKnowledge("Original", emb, "user", {}, ["old-tag"])
 

@@ -14,6 +14,7 @@ import { render } from "@opentui/solid"
 import { createSignal } from "solid-js"
 import { ConversationService } from "@/application/index.ts"
 import { ProjectStorage } from "@/infrastructure/persistence/index.ts"
+import { detectProject } from "@/infrastructure/project/index.ts"
 import { getDefaultEmbedder } from "@/infrastructure/embedding/index.ts"
 import { OpenRouterProvider, DebugProvider } from "@/infrastructure/provider/index.ts"
 import { ConfigService, type ProviderConfig, type Config } from "@/infrastructure/config/index.ts"
@@ -57,6 +58,9 @@ function createProvider(config: ProviderConfig): Provider {
 async function main() {
   const projectRoot = process.cwd()
 
+  // Detect project info
+  const project = await detectProject(projectRoot)
+
   // Load configuration from disk
   const configService = new ConfigService(projectRoot)
   const config = await configService.load()
@@ -71,6 +75,7 @@ async function main() {
 
   // Create initial conversation service
   let service = new ConversationService({
+    projectId: project.id,
     provider: currentProvider,
     storage,
     embedder,
@@ -100,6 +105,7 @@ async function main() {
 
     // Create new service with new provider
     service = new ConversationService({
+      projectId: project.id,
       provider: currentProvider,
       storage,
       embedder,

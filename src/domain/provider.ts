@@ -1,12 +1,13 @@
 import type { Context } from "./context.ts"
-import type { MessageType } from "./session.ts"
+import type { EntryKind } from "./session.ts"
 
 /**
  * A message in provider-neutral format.
  * Infrastructure layer translates to/from provider-specific formats.
+ * @deprecated Use SessionEntry types directly
  */
 export interface ProviderMessage {
-  type: MessageType
+  kind: EntryKind
   content: string
   metadata?: {
     toolId?: string
@@ -137,10 +138,10 @@ export interface Provider {
   countTokens(text: string): Promise<number>
 
   /**
-   * Translate domain message types to provider-specific roles.
-   * This is where the MessageType → role mapping happens.
+   * Translate domain entry kinds to provider-specific roles.
+   * This is where the EntryKind → role mapping happens.
    */
-  translateMessageType(type: MessageType): string
+  translateEntryKind(kind: EntryKind): string
 }
 
 /**

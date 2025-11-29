@@ -4,7 +4,7 @@ import type {
   CompletionOptions,
   StreamChunk,
 } from "@/domain/provider.ts"
-import type { MessageType } from "@/domain/session.ts"
+import type { EntryKind } from "@/domain/session.ts"
 import type { Context } from "@/domain/context.ts"
 
 const DEFAULT_PORT = 7331
@@ -128,10 +128,10 @@ export class DebugProvider implements Provider {
   }
 
   /**
-   * Translate message types to roles.
+   * Translate entry kinds to roles.
    */
-  translateMessageType(type: MessageType): string {
-    return type // Just pass through for debug
+  translateEntryKind(kind: EntryKind): string {
+    return kind // Just pass through for debug
   }
 }
 

@@ -6,15 +6,38 @@ import { sessionsSchema, messagesSchema, knowledgeSchema } from "./schema.ts"
 import type {
   Session,
   SessionMetadata,
-  Message,
-  MessageType,
-  MessageMetadata,
+  SessionEntry,
+  EntryKind,
+  UserInput,
+  AgentResponse,
+  SystemInstruction,
+  KnowledgeReference,
+  ToolInvocation,
   Knowledge,
   KnowledgeSource,
   KnowledgeSourceMetadata,
   Embedding,
   SearchResult,
 } from "./types.ts"
+
+/** Metadata stored in entry records for type-specific fields */
+interface EntryRecordMetadata {
+  // For AgentResponse
+  model?: string
+  stopReason?: string
+  // For SystemInstruction
+  priority?: number
+  // For KnowledgeReference
+  knowledgeId?: string
+  relevanceScore?: number
+  // For ToolInvocation
+  toolId?: string
+  toolName?: string
+  input?: unknown
+  result?: unknown
+  error?: string
+  status?: string
+}
 
 const STORAGE_DIR = ".tinker"
 const DB_DIR = "lancedb"
@@ -42,7 +65,13 @@ function toJson<T>(obj: T | undefined): string | null {
 
 /** Deserialize optional JSON fields */
 function fromJson<T>(json: string | null | undefined): T | undefined {
-  return json ? JSON.parse(json) : undefined
+  if (!json) return undefined
+  try {
+    return JSON.parse(json)
+  } catch {
+    // Handle malformed JSON gracefully
+    return undefined
+  }
 }
 
 /** Extract vector from Arrow result */
@@ -67,6 +96,7 @@ function extractVector(value: unknown): number[] {
 
 interface SessionRecord {
   id: string
+  project_id: string // Stored in metadata until schema migration
   title: string
   created_at: bigint | number
   updated_at: bigint | number
@@ -74,11 +104,12 @@ interface SessionRecord {
   [key: string]: unknown // Index signature for LanceDB compatibility
 }
 
-interface MessageRecord {
+/** Storage record for session entries (messages table) */
+interface EntryRecord {
   id: string
   session_id: string
-  message_type: string
-  content: string
+  message_type: string // Stores EntryKind
+  content: string // Content or empty for ToolInvocation
   tokens: number
   pinned: boolean
   embedding_vector: unknown
@@ -86,9 +117,12 @@ interface MessageRecord {
   embedding_dimensions: number
   embedding_created_at: bigint | number
   timestamp: bigint | number
-  metadata: string | null
+  metadata: string | null // Stores EntryRecordMetadata
   [key: string]: unknown // Index signature for LanceDB compatibility
 }
+
+// Legacy alias
+type MessageRecord = EntryRecord
 
 interface KnowledgeRecord {
   id: string
@@ -107,44 +141,86 @@ interface KnowledgeRecord {
 
 // ─── Record Converters ──────────────────────────────────────────
 
-function sessionToRecord(session: Session): SessionRecord {
+function sessionToRecord(session: Session): Omit<SessionRecord, "project_id"> {
+  // Note: project_id is stored in metadata until schema migration
+  const metadata: SessionMetadata & { projectId?: string } = {
+    ...session.metadata,
+    projectId: session.projectId,
+  }
   return {
     id: session.id,
     title: session.title,
     created_at: dateToTimestamp(session.createdAt),
     updated_at: dateToTimestamp(session.updatedAt),
-    metadata: toJson(session.metadata),
+    metadata: toJson(metadata),
   }
 }
 
 function recordToSession(record: SessionRecord): Session {
+  const metadata = fromJson<SessionMetadata & { projectId?: string }>(record.metadata)
+  const projectId = metadata?.projectId ?? "unknown"
+  // Remove projectId from metadata to keep it clean
+  if (metadata?.projectId) {
+    delete (metadata as Record<string, unknown>).projectId
+  }
   return {
     id: record.id,
+    projectId,
     title: record.title,
     createdAt: timestampToDate(record.created_at),
     updatedAt: timestampToDate(record.updated_at),
-    metadata: fromJson<SessionMetadata>(record.metadata),
+    metadata: Object.keys(metadata ?? {}).length > 0 ? metadata : undefined,
   }
 }
 
-function messageToRecord(message: Message): MessageRecord {
+function entryToRecord(entry: SessionEntry): EntryRecord {
+  // Extract content - ToolInvocation doesn't have content
+  let content = ""
+  if ("content" in entry) {
+    content = entry.content
+  }
+
+  // Build type-specific metadata
+  const metadata: EntryRecordMetadata = {}
+  switch (entry.kind) {
+    case "agent_response":
+      if (entry.model) metadata.model = entry.model
+      if (entry.stopReason) metadata.stopReason = entry.stopReason
+      break
+    case "system_instruction":
+      if (entry.priority !== undefined) metadata.priority = entry.priority
+      break
+    case "knowledge_reference":
+      if (entry.knowledgeId) metadata.knowledgeId = entry.knowledgeId
+      if (entry.relevanceScore !== undefined) metadata.relevanceScore = entry.relevanceScore
+      break
+    case "tool_invocation":
+      metadata.toolId = entry.toolId
+      metadata.toolName = entry.toolName
+      metadata.input = entry.input
+      if (entry.result !== undefined) metadata.result = entry.result
+      if (entry.error) metadata.error = entry.error
+      metadata.status = entry.status
+      break
+  }
+
   return {
-    id: message.id,
-    session_id: message.sessionId,
-    message_type: message.type,
-    content: message.content,
-    tokens: message.tokens,
-    pinned: message.pinned ?? false,
-    embedding_vector: message.embedding.vector,
-    embedding_model: message.embedding.model,
-    embedding_dimensions: message.embedding.dimensions,
-    embedding_created_at: dateToTimestamp(message.embedding.createdAt),
-    timestamp: dateToTimestamp(message.timestamp),
-    metadata: toJson(message.metadata),
+    id: entry.id,
+    session_id: entry.sessionId,
+    message_type: entry.kind,
+    content,
+    tokens: entry.tokens,
+    pinned: entry.pinned ?? false,
+    embedding_vector: entry.embedding.vector,
+    embedding_model: entry.embedding.model,
+    embedding_dimensions: entry.embedding.dimensions,
+    embedding_created_at: dateToTimestamp(entry.embedding.createdAt),
+    timestamp: dateToTimestamp(entry.timestamp),
+    metadata: toJson(metadata),
   }
 }
 
-function recordToMessage(record: MessageRecord): Message {
+function recordToEntry(record: EntryRecord): SessionEntry {
   const embedding: Embedding = {
     vector: extractVector(record.embedding_vector),
     model: record.embedding_model,
@@ -152,18 +228,64 @@ function recordToMessage(record: MessageRecord): Message {
     createdAt: timestampToDate(record.embedding_created_at),
   }
 
-  return {
+  const base = {
     id: record.id,
     sessionId: record.session_id,
-    type: record.message_type as MessageType,
-    content: record.content,
+    timestamp: timestampToDate(record.timestamp),
     tokens: record.tokens,
     embedding,
-    timestamp: timestampToDate(record.timestamp),
     pinned: record.pinned || undefined,
-    metadata: fromJson<MessageMetadata>(record.metadata),
+  }
+
+  const metadata = fromJson<EntryRecordMetadata>(record.metadata) ?? {}
+  const kind = record.message_type as EntryKind
+
+  switch (kind) {
+    case "user_input":
+      return { ...base, kind: "user_input", content: record.content } as UserInput
+    case "agent_response":
+      return {
+        ...base,
+        kind: "agent_response",
+        content: record.content,
+        model: metadata.model,
+        stopReason: metadata.stopReason as AgentResponse["stopReason"],
+      } as AgentResponse
+    case "system_instruction":
+      return {
+        ...base,
+        kind: "system_instruction",
+        content: record.content,
+        priority: metadata.priority,
+      } as SystemInstruction
+    case "knowledge_reference":
+      return {
+        ...base,
+        kind: "knowledge_reference",
+        content: record.content,
+        knowledgeId: metadata.knowledgeId,
+        relevanceScore: metadata.relevanceScore,
+      } as KnowledgeReference
+    case "tool_invocation":
+      return {
+        ...base,
+        kind: "tool_invocation",
+        toolId: metadata.toolId ?? "",
+        toolName: metadata.toolName ?? "",
+        input: metadata.input,
+        result: metadata.result,
+        error: metadata.error,
+        status: (metadata.status as ToolInvocation["status"]) ?? "pending",
+      } as ToolInvocation
+    default:
+      // Fallback for unknown/legacy types - treat as user_input
+      return { ...base, kind: "user_input", content: record.content } as UserInput
   }
 }
+
+// Legacy aliases for gradual migration
+const messageToRecord = entryToRecord
+const recordToMessage = recordToEntry
 
 function knowledgeToRecord(knowledge: Knowledge): KnowledgeRecord {
   return {
@@ -276,10 +398,15 @@ export class ProjectStorage {
 
   // ─── Sessions ──────────────────────────────────────────────────
 
-  async createSession(title: string, metadata?: SessionMetadata): Promise<Session> {
+  async createSession(
+    projectId: string,
+    title: string,
+    metadata?: SessionMetadata
+  ): Promise<Session> {
     const now = new Date()
     const session: Session = {
       id: generateId(),
+      projectId,
       title,
       createdAt: now,
       updatedAt: now,
@@ -332,29 +459,24 @@ export class ProjectStorage {
     return before > after
   }
 
-  // ─── Messages ──────────────────────────────────────────────────
+  // ─── Entries (Messages) ─────────────────────────────────────────
 
-  async addMessage(
+  /**
+   * Add a session entry.
+   * Pass a partial entry (without id/timestamp) and it will be completed.
+   */
+  async addEntry(
     sessionId: string,
-    type: MessageType,
-    content: string,
-    embedding: Embedding,
-    tokens: number,
-    options?: { pinned?: boolean; metadata?: MessageMetadata }
-  ): Promise<Message> {
-    const message: Message = {
+    entry: Omit<SessionEntry, "id" | "sessionId" | "timestamp">
+  ): Promise<SessionEntry> {
+    const fullEntry = {
+      ...entry,
       id: generateId(),
       sessionId,
-      type,
-      content,
-      tokens,
-      embedding,
       timestamp: new Date(),
-      pinned: options?.pinned,
-      metadata: options?.metadata,
-    }
+    } as SessionEntry
 
-    await this.messages!.add([messageToRecord(message)])
+    await this.messages!.add([entryToRecord(fullEntry)])
 
     // Touch session
     await this.sessions!.update({
@@ -362,20 +484,20 @@ export class ProjectStorage {
       values: { updated_at: Date.now() },
     })
 
-    return message
+    return fullEntry
   }
 
-  async getMessages(sessionId: string): Promise<Message[]> {
+  async getEntries(sessionId: string): Promise<SessionEntry[]> {
     const results = await this.messages!
       .query()
       .where(`session_id = '${sessionId}'`)
       .toArray()
 
-    const messages = results.map((r) => recordToMessage(r as unknown as MessageRecord))
-    return messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    const entries = results.map((r) => recordToEntry(r as unknown as EntryRecord))
+    return entries.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
   }
 
-  async getMessage(id: string): Promise<Message | null> {
+  async getEntry(id: string): Promise<SessionEntry | null> {
     const results = await this.messages!
       .query()
       .where(`id = '${id}'`)
@@ -383,16 +505,15 @@ export class ProjectStorage {
       .toArray()
 
     if (!results[0]) return null
-    return recordToMessage(results[0] as unknown as MessageRecord)
+    return recordToEntry(results[0] as unknown as EntryRecord)
   }
 
-  async updateMessage(
+  async updateEntry(
     id: string,
-    updates: { pinned?: boolean; metadata?: MessageMetadata }
-  ): Promise<Message | null> {
+    updates: { pinned?: boolean }
+  ): Promise<SessionEntry | null> {
     const values: Record<string, IntoSql> = {}
     if (updates.pinned !== undefined) values.pinned = updates.pinned
-    if (updates.metadata !== undefined) values.metadata = toJson(updates.metadata)
 
     if (Object.keys(values).length > 0) {
       await this.messages!.update({
@@ -400,14 +521,53 @@ export class ProjectStorage {
         values,
       })
     }
-    return this.getMessage(id)
+    return this.getEntry(id)
   }
 
-  async searchMessages(
+  // Legacy aliases
+  /** @deprecated Use addEntry instead */
+  async addMessage(
+    sessionId: string,
+    kind: EntryKind,
+    content: string,
+    embedding: Embedding,
+    tokens: number,
+    options?: { pinned?: boolean }
+  ): Promise<SessionEntry> {
+    // Create a basic entry - works for user_input, agent_response, system_instruction, knowledge_reference
+    const entry = {
+      kind,
+      content,
+      embedding,
+      tokens,
+      pinned: options?.pinned,
+    } as Omit<SessionEntry, "id" | "sessionId" | "timestamp">
+    return this.addEntry(sessionId, entry)
+  }
+
+  /** @deprecated Use getEntries instead */
+  async getMessages(sessionId: string): Promise<SessionEntry[]> {
+    return this.getEntries(sessionId)
+  }
+
+  /** @deprecated Use getEntry instead */
+  async getMessage(id: string): Promise<SessionEntry | null> {
+    return this.getEntry(id)
+  }
+
+  /** @deprecated Use updateEntry instead */
+  async updateMessage(
+    id: string,
+    updates: { pinned?: boolean }
+  ): Promise<SessionEntry | null> {
+    return this.updateEntry(id, updates)
+  }
+
+  async searchEntries(
     queryEmbedding: number[],
     limit: number = 10,
     sessionId?: string
-  ): Promise<SearchResult<Message>[]> {
+  ): Promise<SearchResult<SessionEntry>[]> {
     let query = this.messages!.vectorSearch(queryEmbedding).column("embedding_vector")
 
     if (sessionId) {
@@ -417,9 +577,18 @@ export class ProjectStorage {
     const results = await query.limit(limit).toArray()
 
     return results.map((r: Record<string, unknown>) => ({
-      item: recordToMessage(r as unknown as MessageRecord),
+      item: recordToEntry(r as unknown as EntryRecord),
       distance: r._distance as number,
     }))
+  }
+
+  /** @deprecated Use searchEntries instead */
+  async searchMessages(
+    queryEmbedding: number[],
+    limit: number = 10,
+    sessionId?: string
+  ): Promise<SearchResult<SessionEntry>[]> {
+    return this.searchEntries(queryEmbedding, limit, sessionId)
   }
 
   // ─── Knowledge ─────────────────────────────────────────────────
@@ -503,12 +672,33 @@ export class ProjectStorage {
     id: string,
     updates: Partial<Pick<Knowledge, "content" | "tags">> & { embedding?: Embedding }
   ): Promise<Knowledge | null> {
+    // LanceDB doesn't support updating List columns directly.
+    // If tags are being updated, we need to delete and re-insert.
+    if (updates.tags !== undefined) {
+      const existing = await this.getKnowledge(id)
+      if (!existing) return null
+
+      // Merge updates with existing values
+      const updated: Knowledge = {
+        ...existing,
+        content: updates.content ?? existing.content,
+        tags: updates.tags,
+        embedding: updates.embedding ?? existing.embedding,
+        updatedAt: new Date(),
+      }
+
+      // Delete and re-add with same ID
+      await this.knowledge!.delete(`id = '${id}'`)
+      await this.knowledge!.add([knowledgeToRecord(updated)])
+      return updated
+    }
+
+    // For non-tag updates, use normal update
     const values: Record<string, IntoSql> = {
       updated_at: Date.now(),
     }
 
     if (updates.content !== undefined) values.content = updates.content
-    if (updates.tags !== undefined) values.tags = updates.tags as IntoSql
     if (updates.embedding !== undefined) {
       values.embedding_vector = updates.embedding.vector as IntoSql
       values.embedding_model = updates.embedding.model

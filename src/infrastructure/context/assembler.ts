@@ -1,4 +1,4 @@
-import type { Message } from "@/domain/session.ts"
+import type { SessionEntry, ToolInvocation } from "@/domain/session.ts"
 import type {
   Context,
   ContextItem,
@@ -7,18 +7,21 @@ import type {
 } from "@/domain/context.ts"
 import { createTokenBudget, consumeTokens } from "@/domain/context.ts"
 
+// Legacy alias
+type Message = SessionEntry
+
 /**
  * Minimal context assembler.
- * - No filtering: includes all messages that fit
+ * - No filtering: includes all entries that fit
  * - No RAG: ignores knowledge retrieval
- * - Simple truncation: drops oldest messages if over budget
+ * - Simple truncation: drops oldest entries if over budget
  */
 export class ContextAssembler {
   /**
-   * Assemble context from messages.
-   * Messages should be in chronological order (oldest first).
+   * Assemble context from session entries.
+   * Entries should be in chronological order (oldest first).
    */
-  assemble(messages: Message[], options: ContextAssemblyOptions): Context {
+  assemble(entries: SessionEntry[], options: ContextAssemblyOptions): Context {
     // Calculate system prompt tokens if not explicitly reserved
     const systemTokens =
       options.reservations?.system ??
@@ -33,8 +36,8 @@ export class ContextAssembler {
       },
     })
 
-    // Convert messages to context items
-    const allItems = messages.map((msg) => this.messageToContextItem(msg))
+    // Convert entries to context items
+    const allItems = entries.map((entry) => this.entryToContextItem(entry))
 
     // Simple strategy: keep as many recent messages as fit
     // Start from the end (most recent) and work backwards
@@ -59,7 +62,7 @@ export class ContextAssembler {
       budget,
       metadata: {
         messagesIncluded: includedItems.length,
-        messagesFiltered: messages.length - includedItems.length,
+        messagesFiltered: entries.length - includedItems.length,
         knowledgeIncluded: 0, // No RAG for now
         assembledAt: new Date(),
       },
@@ -67,16 +70,27 @@ export class ContextAssembler {
   }
 
   /**
-   * Convert a Message to a ContextItem.
+   * Convert a SessionEntry to a ContextItem.
    */
-  private messageToContextItem(message: Message): ContextItem {
+  private entryToContextItem(entry: SessionEntry): ContextItem {
+    // Extract content - ToolInvocation stores data differently
+    let content: string
+    if (entry.kind === "tool_invocation") {
+      const tool = entry as ToolInvocation
+      content = tool.result !== undefined
+        ? `[Tool Result: ${tool.toolName}] ${JSON.stringify(tool.result)}`
+        : `[Tool Call: ${tool.toolName}] ${JSON.stringify(tool.input)}`
+    } else {
+      content = (entry as { content: string }).content
+    }
+
     return {
-      id: message.id,
+      id: entry.id,
       type: "message",
-      content: message.content,
-      tokens: message.tokens,
-      priority: message.pinned ? "high" : "medium",
-      source: { type: "message", message },
+      content,
+      tokens: entry.tokens,
+      priority: entry.pinned ? "high" : "medium",
+      source: { type: "message", entry },
     }
   }
 

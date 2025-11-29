@@ -5,12 +5,21 @@ export { ProjectStorage } from "./project-storage.ts"
 export {
   type Session,
   type SessionMetadata,
+  type SessionEntry,
+  type EntryKind,
+  type UserInput,
+  type AgentResponse,
+  type SystemInstruction,
+  type KnowledgeReference,
+  type ToolInvocation,
+  // Legacy
   type Message,
   type MessageType,
-  type MessageMetadata,
+  // Knowledge
   type Knowledge,
   type KnowledgeSource,
   type KnowledgeSourceMetadata,
+  // Shared
   type Embedding,
   type SearchResult,
   DEFAULT_EMBEDDING_DIMENSIONS,

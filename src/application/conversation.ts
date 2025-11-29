@@ -9,7 +9,7 @@
  * 5. Store assistant response
  */
 
-import type { Session, Message, MessageType } from "@/domain/session.ts"
+import type { Session, SessionEntry, EntryKind } from "@/domain/session.ts"
 import type { Provider, StreamChunk } from "@/domain/provider.ts"
 import type { Context, ContextAssemblyOptions } from "@/domain/context.ts"
 import type { Embedding } from "@/domain/shared.ts"
@@ -17,10 +17,16 @@ import type { ProjectStorage } from "@/infrastructure/persistence/index.ts"
 import type { Embedder } from "@/infrastructure/embedding/types.ts"
 import { ContextAssembler } from "@/infrastructure/context/index.ts"
 
+// Legacy alias
+type Message = SessionEntry
+
 /**
  * Configuration for the conversation service.
  */
 export interface ConversationServiceConfig {
+  /** The project ID for session association */
+  projectId: string
+
   /** The LLM provider to use */
   provider: Provider
 
@@ -56,6 +62,7 @@ export type ConversationEvent =
  * ConversationService — The main orchestrator for chat interactions.
  */
 export class ConversationService {
+  private projectId: string
   private provider: Provider
   private storage: ProjectStorage
   private embedder: Embedder
@@ -68,6 +75,7 @@ export class ConversationService {
   private messages: Message[] = []
 
   constructor(config: ConversationServiceConfig) {
+    this.projectId = config.projectId
     this.provider = config.provider
     this.storage = config.storage
     this.embedder = config.embedder
@@ -104,7 +112,7 @@ export class ConversationService {
    */
   async startSession(title?: string): Promise<Session> {
     const sessionTitle = title ?? `Chat ${new Date().toLocaleString()}`
-    this.session = await this.storage.createSession(sessionTitle, {
+    this.session = await this.storage.createSession(this.projectId, sessionTitle, {
       provider: this.provider.info.id,
       model: this.provider.info.model,
     })
@@ -135,8 +143,8 @@ export class ConversationService {
 
     try {
       // 1. Process user input
-      const userMessage = await this.addMessage("user", userInput)
-      yield { type: "user_message", message: userMessage }
+      const userEntry = await this.addEntry("user_input", userInput)
+      yield { type: "user_message", message: userEntry }
 
       // 2. Assemble context
       const context = this.assembleContext()
@@ -160,10 +168,10 @@ export class ConversationService {
 
       yield { type: "stream_end", usage }
 
-      // 4. Store assistant response
+      // 4. Store agent response
       if (fullContent) {
-        const assistantMessage = await this.addMessage("assistant", fullContent)
-        yield { type: "assistant_message", message: assistantMessage }
+        const agentEntry = await this.addEntry("agent_response", fullContent)
+        yield { type: "assistant_message", message: agentEntry }
       }
     } catch (error) {
       yield { type: "error", error: error as Error }
@@ -171,9 +179,9 @@ export class ConversationService {
   }
 
   /**
-   * Add a message to the current session.
+   * Add an entry to the current session.
    */
-  private async addMessage(type: MessageType, content: string): Promise<Message> {
+  private async addEntry(kind: EntryKind, content: string): Promise<SessionEntry> {
     if (!this.session) {
       throw new Error("No active session")
     }
@@ -183,18 +191,18 @@ export class ConversationService {
     const tokens = await this.countTokens(content)
 
     // Store in database
-    const message = await this.storage.addMessage(
+    const entry = await this.storage.addMessage(
       this.session.id,
-      type,
+      kind,
       content,
       embedding,
       tokens
     )
 
     // Update local cache
-    this.messages.push(message)
+    this.messages.push(entry)
 
-    return message
+    return entry
   }
 
   /**

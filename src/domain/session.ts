@@ -1,44 +1,29 @@
-import type { Embedding } from "./shared.ts"
+// Re-export entry types for convenience
+export type {
+  SessionEntry,
+  EntryKind,
+  UserInput,
+  AgentResponse,
+  SystemInstruction,
+  KnowledgeReference,
+  ToolInvocation,
+} from "./entry.ts"
 
-/**
- * Message type — domain-specific classification.
- * Provider translation to roles happens in infrastructure.
- */
-export type MessageType =
-  | "user" // Human input
-  | "assistant" // LLM response
-  | "system" // System instructions
-  | "knowledge" // Injected from RAG (content from a Knowledge entity)
-  | "code" // Code snippet context
-  | "tool_use" // LLM wants to use a tool
-  | "tool_result" // Result from tool execution
+export {
+  isConversationEntry,
+  isContextEntry,
+  isActionEntry,
+  messageTypeToEntryKind,
+} from "./entry.ts"
 
-/**
- * Message metadata — varies by message type.
- */
-export interface MessageMetadata {
-  // For tool messages
-  toolId?: string
-  toolName?: string
-  toolInput?: unknown
-  toolOutput?: unknown
-
-  // For code messages
-  filePath?: string
-  language?: string
-
-  // For knowledge messages
-  knowledgeId?: string
-  relevanceScore?: number
-
-  // Extensible
-  [key: string]: unknown
-}
+// Legacy exports for backward compatibility during migration
+export type { Message, MessageType } from "./entry.ts"
 
 /**
  * Session metadata — tracks context about how/where the session was created.
  */
 export interface SessionMetadata {
+  /** @deprecated Use Session.projectId instead */
   projectPath?: string
   provider?: string
   model?: string
@@ -46,26 +31,16 @@ export interface SessionMetadata {
 
 /**
  * A conversation session.
+ *
+ * Sessions belong to a Project and contain SessionEntries
+ * (user inputs, assistant responses, context, tool invocations).
  */
 export interface Session {
   id: string
+  /** Project this session belongs to */
+  projectId: string
   title: string
   createdAt: Date
   updatedAt: Date
   metadata?: SessionMetadata
-}
-
-/**
- * A message within a session.
- */
-export interface Message {
-  id: string
-  sessionId: string
-  type: MessageType
-  content: string
-  tokens: number // Computed once, stored
-  embedding: Embedding // Computed on creation
-  timestamp: Date
-  pinned?: boolean // User can pin important messages
-  metadata?: MessageMetadata
 }

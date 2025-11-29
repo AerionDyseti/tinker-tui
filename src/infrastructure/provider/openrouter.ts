@@ -5,7 +5,7 @@ import type {
   StreamChunk,
   ToolDefinition,
 } from "@/domain/provider.ts"
-import type { MessageType } from "@/domain/session.ts"
+import type { EntryKind, SessionEntry, ToolInvocation } from "@/domain/session.ts"
 import type { Context, ContextItem } from "@/domain/context.ts"
 import type {
   OpenAIMessage,
@@ -126,26 +126,22 @@ export class OpenRouterProvider implements Provider {
   }
 
   /**
-   * Translate domain MessageType to OpenAI role.
+   * Translate domain EntryKind to OpenAI role.
    */
-  translateMessageType(type: MessageType): string {
-    switch (type) {
-      case "user":
+  translateEntryKind(kind: EntryKind): string {
+    switch (kind) {
+      case "user_input":
         return "user"
-      case "assistant":
+      case "agent_response":
         return "assistant"
-      case "system":
+      case "system_instruction":
         return "system"
-      case "knowledge":
+      case "knowledge_reference":
         // Knowledge gets injected as system context
         return "system"
-      case "code":
-        // Code snippets go as user context
-        return "user"
-      case "tool_use":
+      case "tool_invocation":
+        // Tool invocations are from assistant
         return "assistant"
-      case "tool_result":
-        return "tool"
       default:
         return "user"
     }
@@ -182,35 +178,38 @@ export class OpenRouterProvider implements Provider {
   private contextItemToMessage(item: ContextItem): OpenAIMessage | null {
     switch (item.source.type) {
       case "message": {
-        const msg = item.source.message
-        const role = this.translateMessageType(msg.type) as OpenAIMessage["role"]
+        const entry = item.source.entry
+        const role = this.translateEntryKind(entry.kind) as OpenAIMessage["role"]
 
-        // Handle tool_use messages specially
-        if (msg.type === "tool_use" && msg.metadata?.toolId) {
-          return {
-            role: "assistant",
-            content: null,
-            tool_calls: [
-              {
-                id: msg.metadata.toolId,
-                type: "function",
-                function: {
-                  name: msg.metadata.toolName as string,
-                  arguments: JSON.stringify(msg.metadata.toolInput),
+        // Handle tool_invocation entries specially
+        if (entry.kind === "tool_invocation") {
+          const toolEntry = entry as ToolInvocation
+
+          // If status is pending or has no result yet, it's a tool call
+          if (toolEntry.status === "pending" || toolEntry.result === undefined) {
+            return {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: toolEntry.toolId,
+                  type: "function",
+                  function: {
+                    name: toolEntry.toolName,
+                    arguments: JSON.stringify(toolEntry.input),
+                  },
                 },
-              },
-            ],
+              ],
+            }
           }
-        }
 
-        // Handle tool_result messages
-        if (msg.type === "tool_result" && msg.metadata?.toolId) {
+          // If it has a result, it's a tool response
           return {
             role: "tool",
-            content: typeof msg.metadata.toolOutput === "string"
-              ? msg.metadata.toolOutput
-              : JSON.stringify(msg.metadata.toolOutput),
-            tool_call_id: msg.metadata.toolId,
+            content: typeof toolEntry.result === "string"
+              ? toolEntry.result
+              : JSON.stringify(toolEntry.result),
+            tool_call_id: toolEntry.toolId,
           }
         }
 

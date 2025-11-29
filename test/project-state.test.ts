@@ -1,8 +1,22 @@
 import { test, expect, afterEach } from "bun:test"
+import { mkdirSync, rmSync } from "node:fs"
 import { createProjectState, type ProjectState } from "@/infrastructure/project/state.ts"
 import { detectProject } from "@/infrastructure/project/project.ts"
+import type { Project } from "@/domain/project.ts"
 
 let state: ProjectState | null = null
+let tempDir: string | null = null
+
+/** Create an isolated Project for storage tests */
+function createTestProject(): Project {
+  tempDir = `/tmp/tinker-test-${crypto.randomUUID()}`
+  mkdirSync(tempDir, { recursive: true })
+  return {
+    id: `test-${crypto.randomUUID().slice(0, 8)}`,
+    root: tempDir,
+    name: "test-project",
+  }
+}
 
 afterEach(async () => {
   // Clean up storage if it was initialized
@@ -15,19 +29,25 @@ afterEach(async () => {
     }
     state = null
   }
+  // Clean up temp directory
+  if (tempDir) {
+    rmSync(tempDir, { recursive: true, force: true })
+    tempDir = null
+  }
 })
 
-test("createProjectState creates state with project info", async () => {
-  const info = await detectProject(process.cwd())
-  state = createProjectState(info)
+test("createProjectState creates state with project", async () => {
+  const project = await detectProject(process.cwd())
+  state = createProjectState(project)
 
-  expect(state.info).toBe(info)
-  expect(state.info.name).toBe("tinker-tui")
+  expect(state.project).toBe(project)
+  expect(state.project.name).toBe("tinker-tui")
+  expect(state.project.id).toBeDefined()
 })
 
 test("lazy config returns empty partial config", async () => {
-  const info = await detectProject(process.cwd())
-  state = createProjectState(info)
+  const project = await detectProject(process.cwd())
+  state = createProjectState(project)
 
   // Access config lazily
   const config = await state.config()
@@ -37,8 +57,8 @@ test("lazy config returns empty partial config", async () => {
 })
 
 test("lazy config is memoized", async () => {
-  const info = await detectProject(process.cwd())
-  state = createProjectState(info)
+  const project = await detectProject(process.cwd())
+  state = createProjectState(project)
 
   // Access twice
   const config1 = await state.config()
@@ -49,8 +69,8 @@ test("lazy config is memoized", async () => {
 })
 
 test("lazy storage initializes ProjectStorage", async () => {
-  const info = await detectProject(process.cwd())
-  state = createProjectState(info)
+  const project = createTestProject()
+  state = createProjectState(project)
 
   // Access storage lazily
   const storage = await state.storage()
@@ -62,8 +82,8 @@ test("lazy storage initializes ProjectStorage", async () => {
 })
 
 test("lazy storage is memoized", async () => {
-  const info = await detectProject(process.cwd())
-  state = createProjectState(info)
+  const project = createTestProject()
+  state = createProjectState(project)
 
   // Access twice
   const storage1 = await state.storage()
