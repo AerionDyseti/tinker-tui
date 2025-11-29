@@ -2,16 +2,15 @@
 export type {
   Session,
   SessionMetadata,
-  SessionEntry,
-  EntryKind,
+  SessionArtifact,
+  ArtifactKind,
+  CompletionStatus,
   UserInput,
   AgentResponse,
   SystemInstruction,
   KnowledgeReference,
-  ToolInvocation,
-  // Legacy
-  Message,
-  MessageType,
+  ToolUse,
+  ToolResult,
 } from "@/domain/session.ts"
 
 export type {

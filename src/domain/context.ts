@@ -1,8 +1,5 @@
-import type { SessionEntry } from "./session.ts"
+import type { SessionArtifact } from "./session.ts"
 import type { Knowledge } from "./knowledge.ts"
-
-// Legacy alias
-type Message = SessionEntry
 
 /**
  * Maximum token reservations for different context slots.
@@ -97,7 +94,7 @@ export type ContextPriority = "critical" | "high" | "medium" | "low"
  * Context item types — what kind of content this is.
  */
 export type ContextItemType =
-  | "message"   // Conversation message
+  | "artifact"  // Session artifact (message, tool use, etc.)
   | "knowledge" // RAG-retrieved fact
   | "system"    // System prompt/instruction
   | "tool"      // Tool definition
@@ -117,27 +114,27 @@ export interface ContextItem {
 
   // Source reference
   source:
-    | { type: "message"; entry: SessionEntry }
+    | { type: "artifact"; artifact: SessionArtifact }
     | { type: "knowledge"; knowledge: Knowledge }
     | { type: "system"; name: string }
     | { type: "tool"; name: string; schema: Record<string, unknown> }
     | { type: "resource"; uri: string; mimeType?: string }
-    | { type: "summary"; messageCount: number; startDate: Date; endDate: Date }
+    | { type: "summary"; artifactCount: number; startDate: Date; endDate: Date }
 }
 
 /**
- * Strategy for filtering entries before RAG.
- * Different strategies can prioritize recency, pinned entries, etc.
+ * Strategy for filtering artifacts before RAG.
+ * Different strategies can prioritize recency, pinned artifacts, etc.
  */
 export interface FilterStrategy {
   name: string
   description: string
 
   /**
-   * Filter and prioritize entries.
-   * Returns entries that should be considered for context.
+   * Filter and prioritize artifacts.
+   * Returns artifacts that should be considered for context.
    */
-  filter(entries: SessionEntry[], budget: TokenBudget): SessionEntry[]
+  filter(artifacts: SessionArtifact[], budget: TokenBudget): SessionArtifact[]
 }
 
 /**
@@ -173,8 +170,8 @@ export interface Context {
 
   /** Metadata about context assembly */
   metadata: {
-    messagesIncluded: number
-    messagesFiltered: number
+    artifactsIncluded: number
+    artifactsFiltered: number
     knowledgeIncluded: number
     assembledAt: Date
   }
@@ -199,6 +196,6 @@ export interface ContextAssemblyOptions {
   /** RAG strategy to use */
   ragStrategy?: RAGStrategy
 
-  /** Whether to include pinned messages regardless of relevance */
+  /** Whether to include pinned artifacts regardless of relevance */
   alwaysIncludePinned?: boolean
 }

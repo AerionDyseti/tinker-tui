@@ -1,29 +1,31 @@
 /**
- * ConversationService — Orchestrates the chat flow.
+ * ActiveSession — Orchestrates a live dialogue session.
  *
  * Responsibilities:
  * 1. Manage session lifecycle (create, load)
  * 2. Process user input → embed → store
  * 3. Assemble context within token budget
  * 4. Call provider for completion (streaming)
- * 5. Store assistant response
+ * 5. Store agent response
  */
 
-import type { Session, SessionEntry, EntryKind } from "@/domain/session.ts"
+import type {
+  Session,
+  SessionArtifact,
+  ArtifactKind,
+  UserInput,
+  AgentResponse,
+} from "@/domain/session.ts"
 import type { Provider, StreamChunk } from "@/domain/provider.ts"
 import type { Context, ContextAssemblyOptions } from "@/domain/context.ts"
-import type { Embedding } from "@/domain/shared.ts"
 import type { ProjectStorage } from "@/infrastructure/persistence/index.ts"
 import type { Embedder } from "@/infrastructure/embedding/types.ts"
 import { ContextAssembler } from "@/infrastructure/context/index.ts"
 
-// Legacy alias
-type Message = SessionEntry
-
 /**
- * Configuration for the conversation service.
+ * Configuration for an active session.
  */
-export interface ConversationServiceConfig {
+export interface ActiveSessionConfig {
   /** The project ID for session association */
   projectId: string
 
@@ -33,7 +35,7 @@ export interface ConversationServiceConfig {
   /** The project storage for persistence */
   storage: ProjectStorage
 
-  /** The embedder for creating message embeddings */
+  /** The embedder for creating artifact embeddings */
   embedder: Embedder
 
   /** System prompt for the conversation */
@@ -47,21 +49,22 @@ export interface ConversationServiceConfig {
 }
 
 /**
- * Event emitted during conversation processing.
+ * Events emitted during session processing.
  */
-export type ConversationEvent =
-  | { type: "user_message"; message: Message }
+export type SessionEvent =
+  | { type: "user_input"; artifact: UserInput }
   | { type: "context_assembled"; context: Context }
   | { type: "stream_start" }
   | { type: "stream_chunk"; content: string }
   | { type: "stream_end"; usage?: StreamChunk["usage"] }
-  | { type: "assistant_message"; message: Message }
+  | { type: "agent_response"; artifact: AgentResponse }
   | { type: "error"; error: Error }
 
 /**
- * ConversationService — The main orchestrator for chat interactions.
+ * ActiveSession — The runtime wrapper around a persisted Session.
+ * Manages the live dialogue flow with streaming and context assembly.
  */
-export class ConversationService {
+export class ActiveSession {
   private projectId: string
   private provider: Provider
   private storage: ProjectStorage
@@ -72,9 +75,9 @@ export class ConversationService {
   private responseReserve: number
 
   private session: Session | null = null
-  private messages: Message[] = []
+  private artifacts: SessionArtifact[] = []
 
-  constructor(config: ConversationServiceConfig) {
+  constructor(config: ActiveSessionConfig) {
     this.projectId = config.projectId
     this.provider = config.provider
     this.storage = config.storage
@@ -87,7 +90,7 @@ export class ConversationService {
   }
 
   /**
-   * Get the current session, if any.
+   * Get the underlying session, if any.
    */
   get currentSession(): Session | null {
     return this.session
@@ -101,50 +104,50 @@ export class ConversationService {
   }
 
   /**
-   * Get the current messages in the session.
+   * Get the current artifacts in the session.
    */
-  get currentMessages(): readonly Message[] {
-    return this.messages
+  get currentArtifacts(): readonly SessionArtifact[] {
+    return this.artifacts
   }
 
   /**
-   * Start a new conversation session.
+   * Start a new session.
    */
-  async startSession(title?: string): Promise<Session> {
+  async start(title?: string): Promise<Session> {
     const sessionTitle = title ?? `Chat ${new Date().toLocaleString()}`
     this.session = await this.storage.createSession(this.projectId, sessionTitle, {
       provider: this.provider.info.id,
       model: this.provider.info.model,
     })
-    this.messages = []
+    this.artifacts = []
     return this.session
   }
 
   /**
    * Load an existing session.
    */
-  async loadSession(sessionId: string): Promise<Session | null> {
+  async load(sessionId: string): Promise<Session | null> {
     const session = await this.storage.getSession(sessionId)
     if (!session) return null
 
     this.session = session
-    this.messages = await this.storage.getMessages(sessionId)
+    this.artifacts = await this.storage.getArtifacts(sessionId)
     return session
   }
 
   /**
-   * Send a user message and get a streaming response.
-   * Yields ConversationEvents as processing progresses.
+   * Send user input and get a streaming response.
+   * Yields SessionEvents as processing progresses.
    */
-  async *chat(userInput: string): AsyncIterable<ConversationEvent> {
+  async *send(userInput: string): AsyncIterable<SessionEvent> {
     if (!this.session) {
-      await this.startSession()
+      await this.start()
     }
 
     try {
       // 1. Process user input
-      const userEntry = await this.addEntry("user_input", userInput)
-      yield { type: "user_message", message: userEntry }
+      const userArtifact = await this.addUserInput(userInput)
+      yield { type: "user_input", artifact: userArtifact }
 
       // 2. Assemble context
       const context = this.assembleContext()
@@ -170,8 +173,8 @@ export class ConversationService {
 
       // 4. Store agent response
       if (fullContent) {
-        const agentEntry = await this.addEntry("agent_response", fullContent)
-        yield { type: "assistant_message", message: agentEntry }
+        const agentArtifact = await this.addAgentResponse(fullContent, "complete")
+        yield { type: "agent_response", artifact: agentArtifact }
       }
     } catch (error) {
       yield { type: "error", error: error as Error }
@@ -179,34 +182,57 @@ export class ConversationService {
   }
 
   /**
-   * Add an entry to the current session.
+   * Add a user input artifact.
    */
-  private async addEntry(kind: EntryKind, content: string): Promise<SessionEntry> {
+  private async addUserInput(content: string): Promise<UserInput> {
     if (!this.session) {
       throw new Error("No active session")
     }
 
-    // Compute embedding and token count
     const embedding = await this.embedder.embed(content)
     const tokens = await this.countTokens(content)
 
-    // Store in database
-    const entry = await this.storage.addMessage(
-      this.session.id,
-      kind,
+    const artifact = await this.storage.addArtifact(this.session.id, {
+      kind: "user_input",
       content,
       embedding,
-      tokens
-    )
+      tokens,
+    })
 
-    // Update local cache
-    this.messages.push(entry)
-
-    return entry
+    this.artifacts.push(artifact)
+    return artifact as UserInput
   }
 
   /**
-   * Assemble context from current messages.
+   * Add an agent response artifact.
+   */
+  private async addAgentResponse(
+    content: string,
+    status: "complete" | "token_limit" | "user_interrupted"
+  ): Promise<AgentResponse> {
+    if (!this.session) {
+      throw new Error("No active session")
+    }
+
+    const embedding = await this.embedder.embed(content)
+    const tokens = await this.countTokens(content)
+
+    const artifact = await this.storage.addArtifact(this.session.id, {
+      kind: "agent_response",
+      content,
+      provider: this.provider.info.id,
+      model: this.provider.info.model,
+      status,
+      embedding,
+      tokens,
+    })
+
+    this.artifacts.push(artifact)
+    return artifact as AgentResponse
+  }
+
+  /**
+   * Assemble context from current artifacts.
    */
   private assembleContext(): Context {
     const options: ContextAssemblyOptions = {
@@ -217,12 +243,11 @@ export class ConversationService {
       },
     }
 
-    return this.assembler.assemble(this.messages, options)
+    return this.assembler.assemble(this.artifacts, options)
   }
 
   /**
    * Estimate token count for text.
-   * Uses provider's tokenizer if available, otherwise rough estimate.
    */
   private async countTokens(text: string): Promise<number> {
     try {
@@ -235,10 +260,8 @@ export class ConversationService {
 }
 
 /**
- * Create a conversation service with the given configuration.
+ * Create an active session with the given configuration.
  */
-export function createConversationService(
-  config: ConversationServiceConfig
-): ConversationService {
-  return new ConversationService(config)
+export function createActiveSession(config: ActiveSessionConfig): ActiveSession {
+  return new ActiveSession(config)
 }

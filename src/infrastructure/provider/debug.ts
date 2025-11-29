@@ -4,7 +4,7 @@ import type {
   CompletionOptions,
   StreamChunk,
 } from "@/domain/provider.ts"
-import type { EntryKind } from "@/domain/session.ts"
+import type { ArtifactKind } from "@/domain/session.ts"
 import type { Context } from "@/domain/context.ts"
 
 const DEFAULT_PORT = 7331
@@ -128,9 +128,9 @@ export class DebugProvider implements Provider {
   }
 
   /**
-   * Translate entry kinds to roles.
+   * Translate artifact kinds to roles.
    */
-  translateEntryKind(kind: EntryKind): string {
+  translateArtifactKind(kind: ArtifactKind): string {
     return kind // Just pass through for debug
   }
 }

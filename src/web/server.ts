@@ -6,7 +6,7 @@
  * Uses Bun.serve() with HTML imports for React bundling.
  */
 
-import { ConversationService } from "@/application/index.ts"
+import { ActiveSession } from "@/application/index.ts"
 import { ProjectStorage } from "@/infrastructure/persistence/index.ts"
 import { detectProject } from "@/infrastructure/project/index.ts"
 import { getDefaultEmbedder } from "@/infrastructure/embedding/index.ts"
@@ -50,7 +50,7 @@ function createProvider(config: ProviderConfig): Provider {
  */
 async function handleChat(
   request: Request,
-  service: ConversationService
+  session: ActiveSession
 ): Promise<Response> {
   const { message } = await request.json() as { message: string }
 
@@ -71,7 +71,7 @@ async function handleChat(
       }
 
       try {
-        for await (const event of service.chat(message)) {
+        for await (const event of session.send(message)) {
           switch (event.type) {
             case "stream_chunk":
               sendEvent({ type: "chunk", content: event.content })
@@ -136,8 +136,8 @@ async function main() {
 
   console.log(`Provider: ${provider.info.name} (${provider.info.model})`)
 
-  // Create conversation service
-  const service = new ConversationService({
+  // Create active session
+  const session = new ActiveSession({
     projectId: project.id,
     provider,
     storage,
@@ -147,7 +147,7 @@ async function main() {
   })
 
   // Start initial session
-  await service.startSession()
+  await session.start()
 
   // Start server
   const server = Bun.serve({
@@ -158,7 +158,7 @@ async function main() {
 
       // Chat API
       "/api/chat": {
-        POST: (req) => handleChat(req, service),
+        POST: (req) => handleChat(req, session),
       },
 
       // Health check

@@ -5,7 +5,7 @@ import type {
   StreamChunk,
   ToolDefinition,
 } from "@/domain/provider.ts"
-import type { EntryKind, SessionEntry, ToolInvocation } from "@/domain/session.ts"
+import type { ArtifactKind, SessionArtifact, ToolUse, ToolResult } from "@/domain/session.ts"
 import type { Context, ContextItem } from "@/domain/context.ts"
 import type {
   OpenAIMessage,
@@ -126,9 +126,9 @@ export class OpenRouterProvider implements Provider {
   }
 
   /**
-   * Translate domain EntryKind to OpenAI role.
+   * Translate domain ArtifactKind to OpenAI role.
    */
-  translateEntryKind(kind: EntryKind): string {
+  translateArtifactKind(kind: ArtifactKind): string {
     switch (kind) {
       case "user_input":
         return "user"
@@ -139,9 +139,12 @@ export class OpenRouterProvider implements Provider {
       case "knowledge_reference":
         // Knowledge gets injected as system context
         return "system"
-      case "tool_invocation":
-        // Tool invocations are from assistant
+      case "tool_use":
+        // Tool uses are from assistant
         return "assistant"
+      case "tool_result":
+        // Tool results go back as tool role
+        return "tool"
       default:
         return "user"
     }
@@ -177,39 +180,38 @@ export class OpenRouterProvider implements Provider {
    */
   private contextItemToMessage(item: ContextItem): OpenAIMessage | null {
     switch (item.source.type) {
-      case "message": {
-        const entry = item.source.entry
-        const role = this.translateEntryKind(entry.kind) as OpenAIMessage["role"]
+      case "artifact": {
+        const artifact = item.source.artifact
+        const role = this.translateArtifactKind(artifact.kind) as OpenAIMessage["role"]
 
-        // Handle tool_invocation entries specially
-        if (entry.kind === "tool_invocation") {
-          const toolEntry = entry as ToolInvocation
-
-          // If status is pending or has no result yet, it's a tool call
-          if (toolEntry.status === "pending" || toolEntry.result === undefined) {
-            return {
-              role: "assistant",
-              content: null,
-              tool_calls: [
-                {
-                  id: toolEntry.toolId,
-                  type: "function",
-                  function: {
-                    name: toolEntry.toolName,
-                    arguments: JSON.stringify(toolEntry.input),
-                  },
+        // Handle tool_use artifacts
+        if (artifact.kind === "tool_use") {
+          const toolUse = artifact as ToolUse
+          return {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: toolUse.toolUseId,
+                type: "function",
+                function: {
+                  name: toolUse.toolName,
+                  arguments: JSON.stringify(toolUse.input),
                 },
-              ],
-            }
+              },
+            ],
           }
+        }
 
-          // If it has a result, it's a tool response
+        // Handle tool_result artifacts
+        if (artifact.kind === "tool_result") {
+          const toolResult = artifact as ToolResult
           return {
             role: "tool",
-            content: typeof toolEntry.result === "string"
-              ? toolEntry.result
-              : JSON.stringify(toolEntry.result),
-            tool_call_id: toolEntry.toolId,
+            content: typeof toolResult.result === "string"
+              ? toolResult.result
+              : JSON.stringify(toolResult.result),
+            tool_call_id: toolResult.toolUseId,
           }
         }
 

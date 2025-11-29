@@ -1,7 +1,7 @@
-// Conversation service
+// Active session
 export {
-  ConversationService,
-  createConversationService,
-  type ConversationServiceConfig,
-  type ConversationEvent,
-} from "./conversation.ts"
+  ActiveSession,
+  createActiveSession,
+  type ActiveSessionConfig,
+  type SessionEvent,
+} from "./active-session.ts"

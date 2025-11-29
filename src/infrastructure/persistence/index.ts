@@ -5,16 +5,15 @@ export { ProjectStorage } from "./project-storage.ts"
 export {
   type Session,
   type SessionMetadata,
-  type SessionEntry,
-  type EntryKind,
+  type SessionArtifact,
+  type ArtifactKind,
+  type CompletionStatus,
   type UserInput,
   type AgentResponse,
   type SystemInstruction,
   type KnowledgeReference,
-  type ToolInvocation,
-  // Legacy
-  type Message,
-  type MessageType,
+  type ToolUse,
+  type ToolResult,
   // Knowledge
   type Knowledge,
   type KnowledgeSource,
@@ -26,4 +25,4 @@ export {
 } from "./types.ts"
 
 // Schemas (for advanced usage)
-export { sessionsSchema, messagesSchema, knowledgeSchema } from "./schema.ts"
+export { sessionsSchema, artifactsSchema, knowledgeSchema } from "./schema.ts"

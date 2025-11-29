@@ -1,22 +1,5 @@
 import type { Context } from "./context.ts"
-import type { EntryKind } from "./session.ts"
-
-/**
- * A message in provider-neutral format.
- * Infrastructure layer translates to/from provider-specific formats.
- * @deprecated Use SessionEntry types directly
- */
-export interface ProviderMessage {
-  kind: EntryKind
-  content: string
-  metadata?: {
-    toolId?: string
-    toolName?: string
-    toolInput?: unknown
-    toolOutput?: unknown
-    [key: string]: unknown
-  }
-}
+import type { ArtifactKind } from "./session.ts"
 
 /**
  * A chunk of streamed response.
@@ -73,9 +56,9 @@ export interface ToolDefinition {
 }
 
 /**
- * Result of executing a tool.
+ * Result of executing a tool (provider-side representation).
  */
-export interface ToolResult {
+export interface ToolExecutionResult {
   toolId: string
   output: unknown
   isError?: boolean
@@ -138,10 +121,9 @@ export interface Provider {
   countTokens(text: string): Promise<number>
 
   /**
-   * Translate domain entry kinds to provider-specific roles.
-   * This is where the EntryKind → role mapping happens.
+   * Translate domain artifact kinds to provider-specific roles.
    */
-  translateEntryKind(kind: EntryKind): string
+  translateArtifactKind(kind: ArtifactKind): string
 }
 
 /**

@@ -1,30 +1,26 @@
-// Re-export entry types for convenience
+// Re-export artifact types for convenience
 export type {
-  SessionEntry,
-  EntryKind,
+  SessionArtifact,
+  ArtifactKind,
+  CompletionStatus,
   UserInput,
   AgentResponse,
   SystemInstruction,
   KnowledgeReference,
-  ToolInvocation,
-} from "./entry.ts"
+  ToolUse,
+  ToolResult,
+} from "./artifact.ts"
 
 export {
-  isConversationEntry,
-  isContextEntry,
-  isActionEntry,
-  messageTypeToEntryKind,
-} from "./entry.ts"
-
-// Legacy exports for backward compatibility during migration
-export type { Message, MessageType } from "./entry.ts"
+  isConversationArtifact,
+  isContextArtifact,
+  isActionArtifact,
+} from "./artifact.ts"
 
 /**
  * Session metadata — tracks context about how/where the session was created.
  */
 export interface SessionMetadata {
-  /** @deprecated Use Session.projectId instead */
-  projectPath?: string
   provider?: string
   model?: string
 }
@@ -32,8 +28,8 @@ export interface SessionMetadata {
 /**
  * A conversation session.
  *
- * Sessions belong to a Project and contain SessionEntries
- * (user inputs, assistant responses, context, tool invocations).
+ * Sessions belong to a Project and contain SessionArtifacts
+ * (user inputs, agent responses, context, tool uses/results).
  */
 export interface Session {
   id: string

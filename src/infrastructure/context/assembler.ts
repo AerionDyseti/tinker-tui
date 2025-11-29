@@ -1,27 +1,23 @@
-import type { SessionEntry, ToolInvocation } from "@/domain/session.ts"
+import type { SessionArtifact, ToolUse, ToolResult } from "@/domain/session.ts"
 import type {
   Context,
   ContextItem,
   ContextAssemblyOptions,
-  TokenBudget,
 } from "@/domain/context.ts"
 import { createTokenBudget, consumeTokens } from "@/domain/context.ts"
 
-// Legacy alias
-type Message = SessionEntry
-
 /**
  * Minimal context assembler.
- * - No filtering: includes all entries that fit
+ * - No filtering: includes all artifacts that fit
  * - No RAG: ignores knowledge retrieval
- * - Simple truncation: drops oldest entries if over budget
+ * - Simple truncation: drops oldest artifacts if over budget
  */
 export class ContextAssembler {
   /**
-   * Assemble context from session entries.
-   * Entries should be in chronological order (oldest first).
+   * Assemble context from session artifacts.
+   * Artifacts should be in chronological order (oldest first).
    */
-  assemble(entries: SessionEntry[], options: ContextAssemblyOptions): Context {
+  assemble(artifacts: SessionArtifact[], options: ContextAssemblyOptions): Context {
     // Calculate system prompt tokens if not explicitly reserved
     const systemTokens =
       options.reservations?.system ??
@@ -36,10 +32,10 @@ export class ContextAssembler {
       },
     })
 
-    // Convert entries to context items
-    const allItems = entries.map((entry) => this.entryToContextItem(entry))
+    // Convert artifacts to context items
+    const allItems = artifacts.map((artifact) => this.artifactToContextItem(artifact))
 
-    // Simple strategy: keep as many recent messages as fit
+    // Simple strategy: keep as many recent artifacts as fit
     // Start from the end (most recent) and work backwards
     const includedItems: ContextItem[] = []
     let tokensUsed = 0
@@ -61,8 +57,8 @@ export class ContextAssembler {
       items: includedItems,
       budget,
       metadata: {
-        messagesIncluded: includedItems.length,
-        messagesFiltered: entries.length - includedItems.length,
+        artifactsIncluded: includedItems.length,
+        artifactsFiltered: artifacts.length - includedItems.length,
         knowledgeIncluded: 0, // No RAG for now
         assembledAt: new Date(),
       },
@@ -70,27 +66,28 @@ export class ContextAssembler {
   }
 
   /**
-   * Convert a SessionEntry to a ContextItem.
+   * Convert a SessionArtifact to a ContextItem.
    */
-  private entryToContextItem(entry: SessionEntry): ContextItem {
-    // Extract content - ToolInvocation stores data differently
+  private artifactToContextItem(artifact: SessionArtifact): ContextItem {
+    // Extract content based on artifact kind
     let content: string
-    if (entry.kind === "tool_invocation") {
-      const tool = entry as ToolInvocation
-      content = tool.result !== undefined
-        ? `[Tool Result: ${tool.toolName}] ${JSON.stringify(tool.result)}`
-        : `[Tool Call: ${tool.toolName}] ${JSON.stringify(tool.input)}`
+    if (artifact.kind === "tool_use") {
+      const tool = artifact as ToolUse
+      content = `[Tool Call: ${tool.toolName}] ${JSON.stringify(tool.input)}`
+    } else if (artifact.kind === "tool_result") {
+      const tool = artifact as ToolResult
+      content = `[Tool Result] ${JSON.stringify(tool.result)}`
     } else {
-      content = (entry as { content: string }).content
+      content = (artifact as { content: string }).content
     }
 
     return {
-      id: entry.id,
-      type: "message",
+      id: artifact.id,
+      type: "artifact",
       content,
-      tokens: entry.tokens,
-      priority: entry.pinned ? "high" : "medium",
-      source: { type: "message", entry },
+      tokens: artifact.tokens,
+      priority: artifact.pinned ? "high" : "medium",
+      source: { type: "artifact", artifact },
     }
   }
 
