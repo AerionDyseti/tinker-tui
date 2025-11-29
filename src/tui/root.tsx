@@ -65,6 +65,7 @@ export function Root(props: RootProps) {
         <Chat
           service={props.service}
           onOpenSettings={handleOpenSettings}
+          onQuit={props.onQuit}
         />
       </Show>
       <Show when={screen() === "settings"}>

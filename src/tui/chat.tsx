@@ -4,7 +4,7 @@
  * Features:
  * - Message history display
  * - Input field at bottom
- * - Commands: /quit, /clear, /info, /settings
+ * - Commands: /quit, /exit, /clear, /info, /settings
  * - Streaming responses
  */
 
@@ -23,6 +23,7 @@ interface ChatMessage {
 export interface ChatProps {
   service: ConversationService
   onOpenSettings: () => void
+  onQuit: () => void
 }
 
 export function Chat(props: ChatProps) {
@@ -58,6 +59,11 @@ export function Chat(props: ChatProps) {
       const msgCount = props.service.currentMessages.length
       setStatusText(`Session: ${session?.id.slice(0, 8) ?? "none"} | Messages: ${msgCount}`)
       setTimeout(() => setStatusText(""), 3000)
+      return
+    }
+
+    if (text === "/quit" || text === "/exit") {
+      props.onQuit()
       return
     }
 
