@@ -10,6 +10,9 @@
   - Richer UI for managing local models vs remote APIs (beyond the current simple selector).
 - **[Feature] Tool Use / Plugins**
   - Allow the agent to execute shell commands or search the web (foundation exists in `openrouter.ts` for tool calls).
+- **[Investigation] Serena-like Named Memories for RAG Working Memory**
+  - Explore using explicitly named/identified memories (à la Serena MCP server pattern) for "working memory" in the RAG system, rather than purely vector-based retrieval.
+  - Could enable more structured recall and deliberate memory management.
 
 ## To Do (Prioritized)
 
