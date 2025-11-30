@@ -192,7 +192,7 @@ export class ActiveSession {
     const embedding = await this.embedder.embed(content)
     const tokens = await this.countTokens(content)
 
-    const artifact = await this.storage.addArtifact(this.session.id, {
+    const artifact = await this.storage.addArtifact<UserInput>(this.session.id, {
       kind: "user_input",
       content,
       embedding,
@@ -217,7 +217,7 @@ export class ActiveSession {
     const embedding = await this.embedder.embed(content)
     const tokens = await this.countTokens(content)
 
-    const artifact = await this.storage.addArtifact(this.session.id, {
+    const artifact = await this.storage.addArtifact<AgentResponse>(this.session.id, {
       kind: "agent_response",
       content,
       provider: this.provider.info.id,

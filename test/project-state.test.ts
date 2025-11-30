@@ -41,7 +41,7 @@ test("createProjectState creates state with project", async () => {
   state = createProjectState(project)
 
   expect(state.project).toBe(project)
-  expect(state.project.name).toBe("tinker-ui")
+  expect(state.project.name).toBe("tinker-tui")
   expect(state.project.id).toBeDefined()
 })
 

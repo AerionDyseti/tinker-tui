@@ -26,13 +26,13 @@ export const sessionsSchema = new Schema([
 ])
 
 /**
- * Arrow schema for the messages table.
+ * Arrow schema for the artifacts table.
  * Stored per-project with inline embeddings.
  *
  * Note: Domain uses "type" and "timestamp", but we store as "message_type" and "created_at"
  * to avoid SQL reserved words and maintain backward compatibility.
  */
-export const messagesSchema = new Schema([
+export const artifactsSchema = new Schema([
   new Field("id", new Utf8(), false),
   new Field("session_id", new Utf8(), false),
   new Field("message_type", new Utf8(), false), // MessageType (user, assistant, etc.)

@@ -2,17 +2,18 @@ import { connect, type Connection, type Table, type IntoSql } from "@lancedb/lan
 import { join } from "node:path"
 import { mkdirSync, existsSync, rmSync } from "node:fs"
 
-import { sessionsSchema, messagesSchema, knowledgeSchema } from "./schema.ts"
+import { sessionsSchema, artifactsSchema, knowledgeSchema } from "./schema.ts"
 import type {
   Session,
   SessionMetadata,
-  SessionEntry,
-  EntryKind,
+  SessionArtifact,
+  ArtifactKind,
   UserInput,
   AgentResponse,
   SystemInstruction,
   KnowledgeReference,
-  ToolInvocation,
+  ToolUse,
+  ToolResult,
   Knowledge,
   KnowledgeSource,
   KnowledgeSourceMetadata,
@@ -24,19 +25,21 @@ import type {
 interface EntryRecordMetadata {
   // For AgentResponse
   model?: string
-  stopReason?: string
+  provider?: string
+  status?: string
   // For SystemInstruction
   priority?: number
   // For KnowledgeReference
   knowledgeId?: string
   relevanceScore?: number
-  // For ToolInvocation
+  // For ToolUse
+  toolUseId?: string
   toolId?: string
   toolName?: string
   input?: unknown
+  // For ToolResult
   result?: unknown
-  error?: string
-  status?: string
+  isError?: boolean
 }
 
 const STORAGE_DIR = ".tinker"
@@ -104,12 +107,12 @@ interface SessionRecord {
   [key: string]: unknown // Index signature for LanceDB compatibility
 }
 
-/** Storage record for session entries (messages table) */
+/** Storage record for session artifacts (messages table) */
 interface EntryRecord {
   id: string
   session_id: string
-  message_type: string // Stores EntryKind
-  content: string // Content or empty for ToolInvocation
+  message_type: string // Stores ArtifactKind
+  content: string // Content or empty for ToolUse/ToolResult
   tokens: number
   pinned: boolean
   embedding_vector: unknown
@@ -173,8 +176,8 @@ function recordToSession(record: SessionRecord): Session {
   }
 }
 
-function entryToRecord(entry: SessionEntry): EntryRecord {
-  // Extract content - ToolInvocation doesn't have content
+function entryToRecord(entry: SessionArtifact): EntryRecord {
+  // Extract content - ToolUse/ToolResult don't have content
   let content = ""
   if ("content" in entry) {
     content = entry.content
@@ -183,24 +186,30 @@ function entryToRecord(entry: SessionEntry): EntryRecord {
   // Build type-specific metadata
   const metadata: EntryRecordMetadata = {}
   switch (entry.kind) {
+    case "user_input":
+      // No additional metadata needed
+      break
     case "agent_response":
-      if (entry.model) metadata.model = entry.model
-      if (entry.stopReason) metadata.stopReason = entry.stopReason
+      metadata.model = entry.model
+      metadata.provider = entry.provider
+      metadata.status = entry.status
       break
     case "system_instruction":
       if (entry.priority !== undefined) metadata.priority = entry.priority
       break
     case "knowledge_reference":
-      if (entry.knowledgeId) metadata.knowledgeId = entry.knowledgeId
-      if (entry.relevanceScore !== undefined) metadata.relevanceScore = entry.relevanceScore
+      // No additional metadata needed
       break
-    case "tool_invocation":
+    case "tool_use":
+      metadata.toolUseId = entry.toolUseId
       metadata.toolId = entry.toolId
       metadata.toolName = entry.toolName
       metadata.input = entry.input
-      if (entry.result !== undefined) metadata.result = entry.result
-      if (entry.error) metadata.error = entry.error
-      metadata.status = entry.status
+      break
+    case "tool_result":
+      metadata.toolUseId = entry.toolUseId
+      metadata.result = entry.result
+      metadata.isError = entry.isError
       break
   }
 
@@ -220,7 +229,7 @@ function entryToRecord(entry: SessionEntry): EntryRecord {
   }
 }
 
-function recordToEntry(record: EntryRecord): SessionEntry {
+function recordToEntry(record: EntryRecord): SessionArtifact {
   const embedding: Embedding = {
     vector: extractVector(record.embedding_vector),
     model: record.embedding_model,
@@ -238,7 +247,7 @@ function recordToEntry(record: EntryRecord): SessionEntry {
   }
 
   const metadata = fromJson<EntryRecordMetadata>(record.metadata) ?? {}
-  const kind = record.message_type as EntryKind
+  const kind = record.message_type as ArtifactKind
 
   switch (kind) {
     case "user_input":
@@ -248,8 +257,9 @@ function recordToEntry(record: EntryRecord): SessionEntry {
         ...base,
         kind: "agent_response",
         content: record.content,
-        model: metadata.model,
-        stopReason: metadata.stopReason as AgentResponse["stopReason"],
+        model: metadata.model ?? "unknown",
+        provider: metadata.provider ?? "unknown",
+        status: (metadata.status as AgentResponse["status"]) ?? "complete",
       } as AgentResponse
     case "system_instruction":
       return {
@@ -263,20 +273,24 @@ function recordToEntry(record: EntryRecord): SessionEntry {
         ...base,
         kind: "knowledge_reference",
         content: record.content,
-        knowledgeId: metadata.knowledgeId,
-        relevanceScore: metadata.relevanceScore,
       } as KnowledgeReference
-    case "tool_invocation":
+    case "tool_use":
       return {
         ...base,
-        kind: "tool_invocation",
+        kind: "tool_use",
+        toolUseId: metadata.toolUseId ?? "",
         toolId: metadata.toolId ?? "",
         toolName: metadata.toolName ?? "",
         input: metadata.input,
+      } as ToolUse
+    case "tool_result":
+      return {
+        ...base,
+        kind: "tool_result",
+        toolUseId: metadata.toolUseId ?? "",
         result: metadata.result,
-        error: metadata.error,
-        status: (metadata.status as ToolInvocation["status"]) ?? "pending",
-      } as ToolInvocation
+        isError: metadata.isError ?? false,
+      } as ToolResult
     default:
       // Fallback for unknown/legacy types - treat as user_input
       return { ...base, kind: "user_input", content: record.content } as UserInput
@@ -326,7 +340,7 @@ function recordToKnowledge(record: KnowledgeRecord): Knowledge {
 // ─── Storage Class ──────────────────────────────────────────────
 
 /**
- * ProjectStorage — per-project storage for sessions, messages, and knowledge.
+ * ProjectStorage — per-project storage for sessions, artifacts, and knowledge.
  * Stored in {project}/.tinker/lancedb/
  *
  * Handles serialization between domain types (Date, Embedding interface)
@@ -386,7 +400,7 @@ export class ProjectStorage {
     if (tables.includes("messages")) {
       this.messages = await this.db.openTable("messages")
     } else {
-      this.messages = await this.db.createEmptyTable("messages", messagesSchema)
+      this.messages = await this.db.createEmptyTable("messages", artifactsSchema)
     }
 
     if (tables.includes("knowledge")) {
@@ -459,22 +473,22 @@ export class ProjectStorage {
     return before > after
   }
 
-  // ─── Entries (Messages) ─────────────────────────────────────────
+  // ─── Artifacts (Entries/Messages) ───────────────────────────────
 
   /**
-   * Add a session entry.
-   * Pass a partial entry (without id/timestamp) and it will be completed.
+   * Add a session artifact.
+   * Pass a partial artifact (without id/timestamp) and it will be completed.
    */
-  async addEntry(
+  async addEntry<T extends SessionArtifact>(
     sessionId: string,
-    entry: Omit<SessionEntry, "id" | "sessionId" | "timestamp">
-  ): Promise<SessionEntry> {
+    entry: Omit<T, "id" | "sessionId" | "timestamp">
+  ): Promise<T> {
     const fullEntry = {
       ...entry,
       id: generateId(),
       sessionId,
       timestamp: new Date(),
-    } as SessionEntry
+    } as T
 
     await this.messages!.add([entryToRecord(fullEntry)])
 
@@ -487,7 +501,7 @@ export class ProjectStorage {
     return fullEntry
   }
 
-  async getEntries(sessionId: string): Promise<SessionEntry[]> {
+  async getEntries(sessionId: string): Promise<SessionArtifact[]> {
     const results = await this.messages!
       .query()
       .where(`session_id = '${sessionId}'`)
@@ -497,7 +511,7 @@ export class ProjectStorage {
     return entries.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
   }
 
-  async getEntry(id: string): Promise<SessionEntry | null> {
+  async getEntry(id: string): Promise<SessionArtifact | null> {
     const results = await this.messages!
       .query()
       .where(`id = '${id}'`)
@@ -511,7 +525,7 @@ export class ProjectStorage {
   async updateEntry(
     id: string,
     updates: { pinned?: boolean }
-  ): Promise<SessionEntry | null> {
+  ): Promise<SessionArtifact | null> {
     const values: Record<string, IntoSql> = {}
     if (updates.pinned !== undefined) values.pinned = updates.pinned
 
@@ -528,30 +542,30 @@ export class ProjectStorage {
   /** @deprecated Use addEntry instead */
   async addMessage(
     sessionId: string,
-    kind: EntryKind,
+    kind: ArtifactKind,
     content: string,
     embedding: Embedding,
     tokens: number,
     options?: { pinned?: boolean }
-  ): Promise<SessionEntry> {
-    // Create a basic entry - works for user_input, agent_response, system_instruction, knowledge_reference
+  ): Promise<SessionArtifact> {
+    // Create a basic artifact - works for user_input, agent_response, system_instruction, knowledge_reference
     const entry = {
       kind,
       content,
       embedding,
       tokens,
       pinned: options?.pinned,
-    } as Omit<SessionEntry, "id" | "sessionId" | "timestamp">
+    } as Omit<SessionArtifact, "id" | "sessionId" | "timestamp">
     return this.addEntry(sessionId, entry)
   }
 
   /** @deprecated Use getEntries instead */
-  async getMessages(sessionId: string): Promise<SessionEntry[]> {
+  async getMessages(sessionId: string): Promise<SessionArtifact[]> {
     return this.getEntries(sessionId)
   }
 
   /** @deprecated Use getEntry instead */
-  async getMessage(id: string): Promise<SessionEntry | null> {
+  async getMessage(id: string): Promise<SessionArtifact | null> {
     return this.getEntry(id)
   }
 
@@ -559,7 +573,7 @@ export class ProjectStorage {
   async updateMessage(
     id: string,
     updates: { pinned?: boolean }
-  ): Promise<SessionEntry | null> {
+  ): Promise<SessionArtifact | null> {
     return this.updateEntry(id, updates)
   }
 
@@ -567,7 +581,7 @@ export class ProjectStorage {
     queryEmbedding: number[],
     limit: number = 10,
     sessionId?: string
-  ): Promise<SearchResult<SessionEntry>[]> {
+  ): Promise<SearchResult<SessionArtifact>[]> {
     let query = this.messages!.vectorSearch(queryEmbedding).column("embedding_vector")
 
     if (sessionId) {
@@ -587,7 +601,59 @@ export class ProjectStorage {
     queryEmbedding: number[],
     limit: number = 10,
     sessionId?: string
-  ): Promise<SearchResult<SessionEntry>[]> {
+  ): Promise<SearchResult<SessionArtifact>[]> {
+    return this.searchEntries(queryEmbedding, limit, sessionId)
+  }
+
+  // ─── Artifact Aliases (Preferred API) ───────────────────────────
+
+  /**
+   * Add a session artifact.
+   * Preferred alias for addEntry().
+   */
+  async addArtifact<T extends SessionArtifact>(
+    sessionId: string,
+    artifact: Omit<T, "id" | "sessionId" | "timestamp">
+  ): Promise<T> {
+    return this.addEntry<T>(sessionId, artifact)
+  }
+
+  /**
+   * Get all artifacts for a session.
+   * Preferred alias for getEntries().
+   */
+  async getArtifacts(sessionId: string): Promise<SessionArtifact[]> {
+    return this.getEntries(sessionId)
+  }
+
+  /**
+   * Get a single artifact by ID.
+   * Preferred alias for getEntry().
+   */
+  async getArtifact(id: string): Promise<SessionArtifact | null> {
+    return this.getEntry(id)
+  }
+
+  /**
+   * Update an artifact.
+   * Preferred alias for updateEntry().
+   */
+  async updateArtifact(
+    id: string,
+    updates: { pinned?: boolean }
+  ): Promise<SessionArtifact | null> {
+    return this.updateEntry(id, updates)
+  }
+
+  /**
+   * Search artifacts using vector similarity.
+   * Preferred alias for searchEntries().
+   */
+  async searchArtifacts(
+    queryEmbedding: number[],
+    limit: number = 10,
+    sessionId?: string
+  ): Promise<SearchResult<SessionArtifact>[]> {
     return this.searchEntries(queryEmbedding, limit, sessionId)
   }
 

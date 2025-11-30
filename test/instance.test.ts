@@ -6,10 +6,10 @@ beforeEach(() => {
 })
 
 test("opens a project and sets it as active", async () => {
-  // Open the current project (tinker-ui itself)
+  // Open the current project (tinker-tui itself)
   const state = await Instance.openProject(process.cwd())
 
-  expect(state.project.name).toBe("tinker-ui")
+  expect(state.project.name).toBe("tinker-tui")
   expect(state.project.git).toBeDefined()
   expect(Instance.activeProject).toBe(state)
   expect(Instance.projects.size).toBe(1)

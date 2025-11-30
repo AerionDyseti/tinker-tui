@@ -41,8 +41,8 @@ describe("ContextAssembler", () => {
       const context = assembler.assemble(messages, { maxTokens: 100 })
 
       expect(context.items).toHaveLength(3)
-      expect(context.metadata.messagesIncluded).toBe(3)
-      expect(context.metadata.messagesFiltered).toBe(0)
+      expect(context.metadata.artifactsIncluded).toBe(3)
+      expect(context.metadata.artifactsFiltered).toBe(0)
     })
 
     test("truncates oldest messages when over budget", () => {
@@ -58,7 +58,7 @@ describe("ContextAssembler", () => {
       expect(context.items).toHaveLength(2)
       expect(context.items[0].content).toBe("Middle")
       expect(context.items[1].content).toBe("Recent")
-      expect(context.metadata.messagesFiltered).toBe(1)
+      expect(context.metadata.artifactsFiltered).toBe(1)
     })
 
     test("reserves tokens for response", () => {
@@ -112,8 +112,8 @@ describe("ContextAssembler", () => {
       const context = assembler.assemble([], { maxTokens: 100 })
 
       expect(context.items).toHaveLength(0)
-      expect(context.metadata.messagesIncluded).toBe(0)
-      expect(context.metadata.messagesFiltered).toBe(0)
+      expect(context.metadata.artifactsIncluded).toBe(0)
+      expect(context.metadata.artifactsFiltered).toBe(0)
     })
 
     test("tracks budget correctly", () => {
@@ -150,9 +150,9 @@ describe("ContextAssembler", () => {
 
       const context = assembler.assemble(messages, { maxTokens: 100 })
 
-      expect(context.items[0].type).toBe("message")
-      expect(context.items[0].source.type).toBe("message")
-      expect(context.items[1].type).toBe("message")
+      expect(context.items[0].type).toBe("artifact")
+      expect(context.items[0].source.type).toBe("artifact")
+      expect(context.items[1].type).toBe("artifact")
     })
 
     test("marks pinned messages as high priority", () => {
