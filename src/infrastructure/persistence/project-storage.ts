@@ -473,6 +473,44 @@ export class ProjectStorage {
     return before > after
   }
 
+  /**
+   * Remove duplicate session records, keeping the most recently updated one.
+   * Returns the number of duplicates removed.
+   */
+  async cleanupDuplicateSessions(): Promise<number> {
+    const results = await this.sessions!.query().toArray()
+    const records = results as unknown as SessionRecord[]
+
+    // Group by ID
+    const byId = new Map<string, SessionRecord[]>()
+    for (const record of records) {
+      const existing = byId.get(record.id) || []
+      existing.push(record)
+      byId.set(record.id, existing)
+    }
+
+    let removed = 0
+
+    // For each ID with duplicates, delete older ones
+    for (const [id, copies] of byId) {
+      if (copies.length <= 1) continue
+
+      // Sort by updated_at descending (keep newest)
+      copies.sort((a, b) => Number(b.updated_at) - Number(a.updated_at))
+
+      // Delete all except the newest by using created_at as discriminator
+      for (let i = 1; i < copies.length; i++) {
+        const record = copies[i]!
+        const createdAt = Number(record.created_at)
+        // Use both id and created_at to target specific duplicate
+        await this.sessions!.delete(`id = '${id}' AND created_at = ${createdAt}`)
+        removed++
+      }
+    }
+
+    return removed
+  }
+
   // ─── Artifacts (Entries/Messages) ───────────────────────────────
 
   /**

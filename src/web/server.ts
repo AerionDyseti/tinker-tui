@@ -6,7 +6,7 @@
  * Uses Bun.serve() with HTML imports for React bundling.
  */
 
-import { ActiveSession } from "@/application/index.ts"
+import { SessionManager } from "@/application/session-manager.ts"
 import { ProjectStorage } from "@/infrastructure/persistence/index.ts"
 import { detectProject } from "@/infrastructure/project/index.ts"
 import { getDefaultEmbedder } from "@/infrastructure/embedding/index.ts"
@@ -47,12 +47,23 @@ function createProvider(config: ProviderConfig): Provider {
 
 /**
  * Handle chat request — streams response as SSE.
+ *
+ * Session ID can be provided via:
+ * - X-Session-ID header
+ * - sessionId field in request body
+ *
+ * If no session ID is provided, creates a new session.
+ * Returns the session ID in the X-Session-ID response header.
  */
 async function handleChat(
   request: Request,
-  session: ActiveSession
+  sessionManager: SessionManager
 ): Promise<Response> {
-  const { message } = await request.json() as { message: string }
+  const body = await request.json() as { message: string; sessionId?: string }
+  const { message } = body
+
+  // Get session ID from header or body
+  const sessionId = request.headers.get("X-Session-ID") || body.sessionId
 
   if (!message?.trim()) {
     return new Response(JSON.stringify({ error: "Message required" }), {
@@ -61,6 +72,10 @@ async function handleChat(
     })
   }
 
+  // Get or create session
+  const session = await sessionManager.getOrCreateSession(sessionId)
+  const currentSessionId = session.currentSession?.id
+
   // Create a streaming response
   const stream = new ReadableStream({
     async start(controller) {
@@ -68,6 +83,11 @@ async function handleChat(
 
       function sendEvent(data: unknown) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      // Send session ID as first event so client can track it
+      if (currentSessionId) {
+        sendEvent({ type: "session", sessionId: currentSessionId })
       }
 
       try {
@@ -103,13 +123,18 @@ async function handleChat(
     },
   })
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    },
-  })
+  const headers: Record<string, string> = {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+  }
+
+  // Include session ID in response header
+  if (currentSessionId) {
+    headers["X-Session-ID"] = currentSessionId
+  }
+
+  return new Response(stream, { headers })
 }
 
 /**
@@ -132,22 +157,29 @@ async function main() {
   // Initialize services
   const storage = await ProjectStorage.open(projectRoot)
   const embedder = getDefaultEmbedder()
-  const provider = createProvider(config.provider)
+  let currentProviderConfig = config.provider
+  const provider = createProvider(currentProviderConfig)
+
+  // Cleanup duplicate sessions from storage
+  const duplicatesRemoved = await storage.cleanupDuplicateSessions()
+  if (duplicatesRemoved > 0) {
+    console.log(`Cleaned up ${duplicatesRemoved} duplicate session record(s)`)
+  }
 
   console.log(`Provider: ${provider.info.name} (${provider.info.model})`)
 
-  // Create active session
-  const session = new ActiveSession({
-    projectId: project.id,
-    provider,
-    storage,
-    embedder,
-    systemPrompt: "You are a helpful coding assistant. Be concise and clear.",
-    responseReserve: 1024,
-  })
-
-  // Start initial session
-  await session.start()
+  // Create session manager
+  const sessionManager = new SessionManager(
+    {
+      projectId: project.id,
+      storage,
+      embedder,
+      systemPrompt: "You are a helpful coding assistant. Be concise and clear.",
+      workingDirectory: projectRoot,
+      responseReserve: 1024,
+    },
+    provider
+  )
 
   // Start server
   const server = Bun.serve({
@@ -158,7 +190,78 @@ async function main() {
 
       // Chat API
       "/api/chat": {
-        POST: (req) => handleChat(req, session),
+        POST: (req) => handleChat(req, sessionManager),
+      },
+
+      // Session API
+      "/api/session/new": {
+        POST: async () => {
+          const session = await sessionManager.createSession()
+          return Response.json({
+            sessionId: session.currentSession?.id,
+          })
+        },
+      },
+
+      "/api/sessions": {
+        GET: async () => {
+          const sessions = await sessionManager.listSessions()
+          // Dedupe by ID (storage may have duplicates - see issue #10)
+          const seen = new Set<string>()
+          const unique = sessions.filter(s => {
+            if (seen.has(s.id)) return false
+            seen.add(s.id)
+            return true
+          })
+          return Response.json({ sessions: unique })
+        },
+      },
+
+      // Get messages for a session
+      "/api/session/messages": {
+        GET: async (req) => {
+          const url = new URL(req.url)
+          const id = url.searchParams.get("id")
+          if (!id) {
+            return Response.json({ error: "Missing session id" }, { status: 400 })
+          }
+          const artifacts = await storage.getArtifacts(id)
+          // Convert to message format for frontend
+          const messages = artifacts
+            .filter(a => a.kind === "user_input" || a.kind === "agent_response")
+            .map(a => ({
+              role: a.kind === "user_input" ? "user" : "agent",
+              content: a.content,
+            }))
+          return Response.json({ messages })
+        },
+      },
+
+      // Settings API
+      "/api/settings": {
+        GET: () => Response.json({
+          systemPrompt: sessionManager["config"].systemPrompt,
+          provider: currentProviderConfig,
+        }),
+        PUT: async (req) => {
+          const body = await req.json() as {
+            systemPrompt?: string
+            provider?: ProviderConfig
+          }
+          if (body.systemPrompt !== undefined) {
+            sessionManager["config"].systemPrompt = body.systemPrompt
+          }
+          if (body.provider !== undefined) {
+            currentProviderConfig = body.provider
+            const newProvider = createProvider(body.provider)
+            sessionManager.setProvider(newProvider)
+            console.log(`Provider switched to: ${newProvider.info.name} (${newProvider.info.model})`)
+          }
+          return Response.json({
+            systemPrompt: sessionManager["config"].systemPrompt,
+            provider: currentProviderConfig,
+          })
+        },
       },
 
       // Health check

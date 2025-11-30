@@ -8,8 +8,10 @@
   - `/save` or `/export` command to dump chat history to a JSON/Markdown file.
 - **[Feature] Model Registry UI**
   - Richer UI for managing local models vs remote APIs (beyond the current simple selector).
-- **[Feature] Tool Use / Plugins**
-  - Allow the agent to execute shell commands or search the web (foundation exists in `openrouter.ts` for tool calls).
+- **[Feature] Bash Tool Execution**
+  - Allow the agent to execute shell commands via tool calling.
+  - Implementation plan: `src/tools/registry.ts` (tool registry pattern), `src/tools/bash.ts` (Bun `$` shell executor), tool use loop in `ActiveSession.send()`.
+  - Foundation exists: ToolUse/ToolResult types in `domain/artifact.ts`, OpenRouter handles tool protocol.
 - **[Investigation] Serena-like Named Memories for RAG Working Memory**
   - Explore using explicitly named/identified memories (à la Serena MCP server pattern) for "working memory" in the RAG system, rather than purely vector-based retrieval.
   - Could enable more structured recall and deliberate memory management.
@@ -41,6 +43,10 @@
   - **Context:** `lancedb` and `embedding` infrastructure exists. `ContextAssembler` needs to be updated to actually use retrieved knowledge.
 
 ### Low Priority / Polish
+
+- **[UI] Markdown Theming**
+  - **Goal:** Proper syntax highlighting theme for code blocks, consistent styling across markdown elements.
+  - **Context:** Basic markdown rendering works; needs polish for code highlighting colors.
 
 - **[UX] Visual Polish**
   - **Goal:** Add a spinner/progress bar during generation. Improve command discovery (type `/` to see help).
