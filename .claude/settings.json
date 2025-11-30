@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__vector-memory-project__store_memory",
+      "mcp__vector-memory-project__search_memories",
+      "mcp__vector-memory-project__delete_memory",
+      "mcp__vector-memory-project__get_memory",
+      "WebSearch",
+      "Bash(bun test:*)",
+      "Bash(bun run typecheck:*)",
+      "Bash(bun run:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs"
+    ]
+  },
+  "outputStyle": "Deliberate",
+  "includeCoAuthoredBy": false
+}

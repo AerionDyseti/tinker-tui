@@ -10,7 +10,7 @@
       "command": "bunx",
       "args": ["--bun", "@aeriondyseti/vector-memory-mcp"],
       "env": {
-        "VECTOR_MEMORY_DB_PATH": "${projectDir}/.agents/vector-memories.db"
+        "VECTOR_MEMORY_DB_PATH": "./.agents/vector-memories.db"
       }
     },
     "serena": {
@@ -24,8 +24,18 @@
         "--context",
         "ide-assistant",
         "--project",
-        "${projectDir}"
+        "tinker-tui"
       ]
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    },
+    "browser-tools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@agentdeskai/browser-tools-mcp@latest"]
     }
   }
 }

@@ -1,0 +1,17 @@
+{
+  "type": "profile",
+  "profile": "web-dev",
+  "profile_version": "27882b2",
+  "setup_at": "2025-11-29T00:00:00Z",
+  "last_sync": "2025-11-29T00:00:00Z",
+  "managed": {
+    "instructions/vector-memory-project.md": "bb03b2f5fe90",
+    "instructions/browser-tools.md": "5be7b7643707"
+  },
+  "excluded": {
+    "files": [],
+    "settings": [],
+    "mcp": []
+  },
+  "local_only": []
+}

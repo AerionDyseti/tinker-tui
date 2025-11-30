@@ -198,3 +198,7 @@ Direct action is ONLY appropriate for:
 - **Context efficiency**: Orchestrator stays lightweight
 - **Clarity**: Clear responsibility for each task type
 - **Coordination**: Orchestrator can combine multiple agent results
+
+# Managed Instructions
+@.claude/instructions/vector-memory-project.md
+@.claude/instructions/browser-tools.md
