@@ -25,6 +25,10 @@ export interface SimulationConfig {
   output?: {
     console?: boolean
     transcript?: string
+    /** Log full context sent to each model (truncated to console) */
+    logContext?: boolean
+    /** Dump full context to this file (JSON, no truncation) */
+    contextDump?: string
   }
 }
 

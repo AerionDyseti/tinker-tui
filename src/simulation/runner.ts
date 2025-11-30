@@ -14,6 +14,53 @@ interface LLMProvider {
   complete(messages: Message[], systemPrompt?: string): Promise<string>
 }
 
+/** Retry config */
+const MAX_RETRIES = 5
+const INITIAL_BACKOFF_MS = 2000
+
+/** Sleep helper */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Wrap a provider with retry logic */
+function withRetry(provider: LLMProvider, label: string): LLMProvider {
+  return {
+    async complete(messages, systemPrompt) {
+      let lastError: Error | null = null
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+          return await provider.complete(messages, systemPrompt)
+        } catch (err) {
+          lastError = err as Error
+          const isRateLimit = lastError.message.includes("429")
+          if (!isRateLimit) {
+            throw lastError // Don't retry non-rate-limit errors
+          }
+          const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt)
+          console.log(`[${label}] Rate limited, retrying in ${backoff / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})`)
+          await sleep(backoff)
+        }
+      }
+      throw lastError
+    },
+  }
+}
+
+/** Log context in a readable format */
+function logContext(label: string, messages: Message[], systemPrompt?: string): void {
+  console.log(`\n┌─ ${label} Context ─────────────────────────────────`)
+  if (systemPrompt) {
+    console.log(`│ [system] ${systemPrompt.slice(0, 100)}${systemPrompt.length > 100 ? "..." : ""}`)
+  }
+  for (const msg of messages) {
+    const prefix = msg.role === "user" ? "[user]" : "[asst]"
+    const content = msg.content.slice(0, 80).replace(/\n/g, " ")
+    console.log(`│ ${prefix} ${content}${msg.content.length > 80 ? "..." : ""}`)
+  }
+  console.log(`└${"─".repeat(50)}`)
+}
+
 /**
  * Create an Ollama provider.
  */
@@ -90,10 +137,22 @@ function createProvider(type: "ollama" | "openrouter", model: string): LLMProvid
   }
 }
 
+/** A snapshot of context sent to a model */
+interface ContextSnapshot {
+  turn: number
+  speaker: "user" | "agent"
+  model: string
+  systemPrompt?: string
+  messages: Message[]
+  response: string
+  timestamp: number
+}
+
 export interface SimulationResult {
   name: string
   turns: number
   messages: Message[]
+  contextSnapshots: ContextSnapshot[]
   duration: number
 }
 
@@ -101,10 +160,17 @@ export interface SimulationResult {
  * Run a simulation.
  */
 export async function runSimulation(config: SimulationConfig): Promise<SimulationResult> {
-  const userProvider = createProvider(config.user.provider, config.user.model)
-  const agentProvider = createProvider(config.agent.provider, config.agent.model)
+  const userProvider = withRetry(
+    createProvider(config.user.provider, config.user.model),
+    `User/${config.user.model}`
+  )
+  const agentProvider = withRetry(
+    createProvider(config.agent.provider, config.agent.model),
+    `Agent/${config.agent.model}`
+  )
 
   const messages: Message[] = []
+  const contextSnapshots: ContextSnapshot[] = []
   const startTime = Date.now()
 
   // Opening message (user kicks off)
@@ -127,8 +193,22 @@ export async function runSimulation(config: SimulationConfig): Promise<Simulatio
 
   for (let turn = 0; turn < config.turns; turn++) {
     // Agent responds
-    const agentResponse = await agentProvider.complete(messages, config.agent.systemPrompt)
+    const agentContext = [...messages] // snapshot before response
+    if (config.output?.logContext) {
+      logContext("Agent", agentContext, config.agent.systemPrompt)
+    }
+    const agentResponse = await agentProvider.complete(agentContext, config.agent.systemPrompt)
     messages.push({ role: "assistant", content: agentResponse })
+
+    contextSnapshots.push({
+      turn,
+      speaker: "agent",
+      model: config.agent.model,
+      systemPrompt: config.agent.systemPrompt,
+      messages: agentContext,
+      response: agentResponse,
+      timestamp: Date.now(),
+    })
 
     if (config.output?.console) {
       console.log(`[Agent] ${agentResponse}\n`)
@@ -142,8 +222,21 @@ export async function runSimulation(config: SimulationConfig): Promise<Simulatio
         content: m.content,
       }))
 
+      if (config.output?.logContext) {
+        logContext("User", flippedMessages, config.user.systemPrompt)
+      }
       const userResponse = await userProvider.complete(flippedMessages, config.user.systemPrompt)
       messages.push({ role: "user", content: userResponse })
+
+      contextSnapshots.push({
+        turn,
+        speaker: "user",
+        model: config.user.model,
+        systemPrompt: config.user.systemPrompt,
+        messages: flippedMessages,
+        response: userResponse,
+        timestamp: Date.now(),
+      })
 
       if (config.output?.console) {
         console.log(`[User] ${userResponse}\n`)
@@ -159,12 +252,26 @@ export async function runSimulation(config: SimulationConfig): Promise<Simulatio
     console.log(`${"─".repeat(60)}\n`)
   }
 
+  // Save context dump if configured
+  if (config.output?.contextDump) {
+    await saveContextDump(contextSnapshots, config.output.contextDump)
+    console.log(`Context dump saved: ${config.output.contextDump}`)
+  }
+
   return {
     name: config.name ?? "unnamed",
     turns: config.turns,
     messages,
+    contextSnapshots,
     duration,
   }
+}
+
+/**
+ * Save full context dump as JSON.
+ */
+async function saveContextDump(snapshots: ContextSnapshot[], path: string): Promise<void> {
+  await Bun.write(path, JSON.stringify(snapshots, null, 2))
 }
 
 /**

@@ -3,7 +3,7 @@
   "turns": 3,
   "user": {
     "provider": "openrouter",
-    "model": "meta-llama/llama-3.2-3b-instruct:free",
+    "model": "mistralai/mistral-small-3.1-24b-instruct:free",
     "systemPrompt": "You are a curious developer exploring a new codebase. Ask short, focused questions about code structure, patterns, or how things work. Keep responses under 2 sentences."
   },
   "agent": {
@@ -14,6 +14,8 @@
   "opening": "Hey, I'm looking at this TypeScript project and I'm confused about how the session artifacts work. Can you explain?",
   "output": {
     "console": true,
-    "transcript": "simulations/free-model-test-output.md"
+    "logContext": true,
+    "transcript": "simulations/free-model-test-output.md",
+    "contextDump": "simulations/free-model-test-context.json"
   }
 }

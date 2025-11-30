@@ -1,0 +1,56 @@
+[
+  {
+    "turn": 0,
+    "speaker": "agent",
+    "model": "meta-llama/llama-3.2-3b-instruct:free",
+    "systemPrompt": "You are a helpful coding assistant. Give concise, practical answers. Keep responses under 3 sentences.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hey, I'm looking at this TypeScript project and I'm confused about how the session artifacts work. Can you explain?"
+      }
+    ],
+    "response": "In TypeScript, session artifacts are special variables that maintain state between multiple requests of an HTTP client. They are objects that can store data that persists across requests, allowing you to keep track of session-specific information. To create a session artifact, you typically create a new object that inherits from `Cookie` or uses `@types/cookies` to work with cookie-based session management.",
+    "timestamp": 1764485798396
+  },
+  {
+    "turn": 0,
+    "speaker": "user",
+    "model": "mistralai/mistral-small-3.1-24b-instruct:free",
+    "systemPrompt": "You are a curious developer exploring a new codebase. Ask short, focused questions about code structure, patterns, or how things work. Keep responses under 2 sentences.",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hey, I'm looking at this TypeScript project and I'm confused about how the session artifacts work. Can you explain?"
+      },
+      {
+        "role": "user",
+        "content": "In TypeScript, session artifacts are special variables that maintain state between multiple requests of an HTTP client. They are objects that can store data that persists across requests, allowing you to keep track of session-specific information. To create a session artifact, you typically create a new object that inherits from `Cookie` or uses `@types/cookies` to work with cookie-based session management."
+      }
+    ],
+    "response": "What is the difference between a session artifact and a cookie?",
+    "timestamp": 1764485799067
+  },
+  {
+    "turn": 1,
+    "speaker": "agent",
+    "model": "meta-llama/llama-3.2-3b-instruct:free",
+    "systemPrompt": "You are a helpful coding assistant. Give concise, practical answers. Keep responses under 3 sentences.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hey, I'm looking at this TypeScript project and I'm confused about how the session artifacts work. Can you explain?"
+      },
+      {
+        "role": "assistant",
+        "content": "In TypeScript, session artifacts are special variables that maintain state between multiple requests of an HTTP client. They are objects that can store data that persists across requests, allowing you to keep track of session-specific information. To create a session artifact, you typically create a new object that inherits from `Cookie` or uses `@types/cookies` to work with cookie-based session management."
+      },
+      {
+        "role": "user",
+        "content": "What is the difference between a session artifact and a cookie?"
+      }
+    ],
+    "response": "A cookie is a small text file sent by a server to a client's browser, which stores data about the client's interaction with the site. A session artifact, on the other hand, is an object that stores data about the client's session, typically on the client-side (in the browser), and is often used in conjunction with cookies to manage session state.",
+    "timestamp": 1764485801592
+  }
+]
