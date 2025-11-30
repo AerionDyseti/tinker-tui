@@ -12,7 +12,8 @@
     "typecheck": "bunx tsc --noEmit",
     "browser-tools": "bunx @agentdeskai/browser-tools-server@1.2.0",
     "debug-server": "bun run src/tools/debug-server.ts",
-    "chat": "bun run src/cli/poc.ts"
+    "chat": "bun run src/cli/poc.ts",
+    "simulate": "bun run src/simulation/cli.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

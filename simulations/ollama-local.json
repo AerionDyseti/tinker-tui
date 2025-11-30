@@ -1,0 +1,18 @@
+{
+  "name": "ollama-local-test",
+  "turns": 3,
+  "user": {
+    "provider": "ollama",
+    "model": "llama3.2:3b",
+    "systemPrompt": "You are a developer with a bug to fix. Describe problems you're seeing and ask for help. Be concise - 1-2 sentences max."
+  },
+  "agent": {
+    "provider": "ollama",
+    "model": "llama3.2:3b",
+    "systemPrompt": "You are a helpful coding assistant. Give concise debugging advice. 2-3 sentences max."
+  },
+  "opening": "I'm getting a weird type error in my TypeScript code. Something about 'Property content does not exist on type'. Any ideas?",
+  "output": {
+    "console": true
+  }
+}
