@@ -1,0 +1,5 @@
+$b81dee75-dec9-4cad-be66-de21824cec95²£"id ÿÿÿÿÿÿÿÿÿ*string8Zdefault;vector ÿÿÿÿÿÿÿÿÿ*fixed_size_list:float:3848Zdefault)content ÿÿÿÿÿÿÿÿÿ*string8Zdefault*metadata ÿÿÿÿÿÿÿÿÿ*string8Zdefault4
+created_at ÿÿÿÿÿÿÿÿÿ*timestamp:ms:-8Zdefault4
+updated_at ÿÿÿÿÿÿÿÿÿ*timestamp:ms:-8Zdefault1superseded_by ÿÿÿÿÿÿÿÿÿ*string08Zdefault"!
+lance.auto_cleanup.interval20"'
+lance.auto_cleanup.older_than14days
