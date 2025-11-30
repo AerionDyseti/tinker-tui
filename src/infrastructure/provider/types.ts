@@ -90,4 +90,9 @@ export interface OpenRouterConfig {
   baseUrl?: string
   siteUrl?: string // For HTTP-Referer header
   siteName?: string // For X-Title header
+  retry?: {
+    maxAttempts?: number // default: 5
+    initialDelayMs?: number // default: 2000
+    maxDelayMs?: number // default: 32000
+  }
 }

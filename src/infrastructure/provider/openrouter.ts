@@ -42,15 +42,28 @@ const DEFAULT_CAPABILITIES = { maxContext: 32000, maxOutput: 4096, tools: false,
  * OpenRouter provider implementation.
  * Uses OpenAI-compatible API to access various models.
  */
+/** Default retry settings */
+const DEFAULT_RETRY = {
+  maxAttempts: 5,
+  initialDelayMs: 2000,
+  maxDelayMs: 32000,
+}
+
 export class OpenRouterProvider implements Provider {
   readonly info: ProviderInfo
 
   private config: OpenRouterConfig
   private baseUrl: string
+  private retryConfig: Required<NonNullable<OpenRouterConfig["retry"]>>
 
   constructor(config: OpenRouterConfig) {
     this.config = config
     this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL
+    this.retryConfig = {
+      maxAttempts: config.retry?.maxAttempts ?? DEFAULT_RETRY.maxAttempts,
+      initialDelayMs: config.retry?.initialDelayMs ?? DEFAULT_RETRY.initialDelayMs,
+      maxDelayMs: config.retry?.maxDelayMs ?? DEFAULT_RETRY.maxDelayMs,
+    }
 
     const caps = MODEL_CAPABILITIES[config.model] ?? DEFAULT_CAPABILITIES
 
@@ -90,21 +103,8 @@ export class OpenRouterProvider implements Provider {
       tools: tools?.length ? tools : undefined,
     }
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.config.apiKey}`,
-        "HTTP-Referer": this.config.siteUrl ?? "https://github.com/tinker-ui",
-        "X-Title": this.config.siteName ?? "tinker-ui",
-      },
-      body: JSON.stringify(request),
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`OpenRouter API error (${response.status}): ${error}`)
-    }
+    // Fetch with retry for rate limits
+    const response = await this.fetchWithRetry(request)
 
     if (!response.body) {
       throw new Error("No response body from OpenRouter")
@@ -112,6 +112,56 @@ export class OpenRouterProvider implements Provider {
 
     // Parse SSE stream
     yield* this.parseSSEStream(response.body)
+  }
+
+  /**
+   * Fetch with exponential backoff retry for rate limits (429).
+   */
+  private async fetchWithRetry(request: OpenAIChatRequest): Promise<Response> {
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt < this.retryConfig.maxAttempts; attempt++) {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.config.apiKey}`,
+          "HTTP-Referer": this.config.siteUrl ?? "https://github.com/tinker-ui",
+          "X-Title": this.config.siteName ?? "tinker-ui",
+        },
+        body: JSON.stringify(request),
+      })
+
+      if (response.ok) {
+        return response
+      }
+
+      const errorText = await response.text()
+      lastError = new Error(`OpenRouter API error (${response.status}): ${errorText}`)
+
+      // Only retry on rate limits (429) or server errors (5xx)
+      const isRetryable = response.status === 429 || response.status >= 500
+      if (!isRetryable) {
+        throw lastError
+      }
+
+      // Exponential backoff with cap
+      const delay = Math.min(
+        this.retryConfig.initialDelayMs * Math.pow(2, attempt),
+        this.retryConfig.maxDelayMs
+      )
+      console.log(
+        `[OpenRouter] ${response.status} error, retrying in ${delay / 1000}s ` +
+          `(attempt ${attempt + 1}/${this.retryConfig.maxAttempts})`
+      )
+      await this.sleep(delay)
+    }
+
+    throw lastError ?? new Error("OpenRouter request failed after retries")
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   /**

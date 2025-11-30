@@ -1,0 +1,24 @@
+{
+  "name": "basic-conversation",
+  "turns": 3,
+  "human": {
+    "provider": "openrouter",
+    "model": "mistralai/mistral-small-3.1-24b-instruct:free",
+    "systemPrompt": "You are a developer learning about a new codebase. Ask focused questions about code structure and patterns. Keep responses to 1-2 sentences."
+  },
+  "llm": {
+    "provider": "openrouter",
+    "model": "meta-llama/llama-3.2-3b-instruct:free",
+    "systemPrompt": "You are a helpful coding assistant explaining a TypeScript project. Be concise and practical."
+  },
+  "opening": "I'm new to this project. Can you explain how the session artifacts work?",
+  "integrate": {
+    "maxContextTokens": 4000,
+    "dualSession": true
+  },
+  "output": {
+    "console": true,
+    "transcript": "simulations/scenarios/basic-conversation-output.md",
+    "artifactDump": "simulations/scenarios/basic-conversation-artifacts.json"
+  }
+}

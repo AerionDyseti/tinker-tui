@@ -9,7 +9,7 @@
 
 import { parseArgs } from "util"
 import { loadConfig } from "./config.ts"
-import { runSimulation, saveTranscript } from "./runner.ts"
+import { runSimulation, runIntegratedSimulation, saveTranscript } from "./runner.ts"
 
 async function main() {
   const { values, positionals } = parseArgs({
@@ -41,7 +41,7 @@ Example:
     process.exit(0)
   }
 
-  const configPath = positionals[0]
+  const configPath = positionals[0]!
   console.log(`Loading config: ${configPath}`)
 
   const config = await loadConfig(configPath)
@@ -57,8 +57,10 @@ Example:
     process.exit(0)
   }
 
-  // Run it
-  const result = await runSimulation(config)
+  // Run it — use integrated runner if config.integrate is set
+  const result = config.integrate
+    ? await runIntegratedSimulation(config)
+    : await runSimulation(config)
 
   // Save transcript if configured
   if (config.output?.transcript) {

@@ -142,22 +142,37 @@ export interface ProviderFactory {
 export type LocalRuntime = "ollama" | "lmstudio" | "llamacpp" | "other"
 
 /**
+ * Retry configuration for transient failures (rate limits, timeouts).
+ */
+export interface RetryConfig {
+  /** Maximum number of retry attempts (default: 5) */
+  maxAttempts?: number
+  /** Initial delay in ms before first retry (default: 2000) */
+  initialDelayMs?: number
+  /** Maximum delay in ms between retries (default: 32000) */
+  maxDelayMs?: number
+}
+
+/**
  * Provider configuration — discriminated union for type safety.
  */
 export type ProviderConfig =
   | {
       type: "claude-code"
       model: string
+      retry?: RetryConfig
     }
   | {
       type: "openrouter"
       model: string
       apiKey: string
       baseUrl?: string
+      retry?: RetryConfig
     }
   | {
       type: "local"
       model: string
       baseUrl: string
       runtime: LocalRuntime
+      retry?: RetryConfig
     }
