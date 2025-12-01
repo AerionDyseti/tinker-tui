@@ -41,6 +41,9 @@ export interface ActiveSessionConfig {
   /** System prompt for the conversation */
   systemPrompt?: string
 
+  /** Working directory for the session (for context in system prompt) */
+  workingDirectory?: string
+
   /** Maximum context tokens (defaults to provider's max) */
   maxContextTokens?: number
 
@@ -70,7 +73,8 @@ export class ActiveSession {
   private storage: ProjectStorage
   private embedder: Embedder
   private assembler: ContextAssembler
-  private systemPrompt: string
+  private baseSystemPrompt: string
+  private workingDirectory: string
   private maxContextTokens: number
   private responseReserve: number
 
@@ -83,10 +87,22 @@ export class ActiveSession {
     this.storage = config.storage
     this.embedder = config.embedder
     this.assembler = new ContextAssembler()
-    this.systemPrompt = config.systemPrompt ?? "You are a helpful assistant."
+    this.baseSystemPrompt = config.systemPrompt ?? "You are a helpful assistant."
+    this.workingDirectory = config.workingDirectory ?? process.cwd()
     this.maxContextTokens =
       config.maxContextTokens ?? config.provider.info.capabilities.maxContextTokens
     this.responseReserve = config.responseReserve ?? 1024
+  }
+
+  /**
+   * Build the system prompt with dynamic context (time, working directory).
+   */
+  private buildSystemPrompt(): string {
+    const now = new Date().toISOString()
+    return `${this.baseSystemPrompt}
+
+The current time is: ${now}
+Your current working directory is: ${this.workingDirectory}`
   }
 
   /**
@@ -108,6 +124,74 @@ export class ActiveSession {
    */
   get currentArtifacts(): readonly SessionArtifact[] {
     return this.artifacts
+  }
+
+  /**
+   * Get the base system prompt (without dynamic context).
+   */
+  get systemPrompt(): string {
+    return this.baseSystemPrompt
+  }
+
+  /**
+   * Update the base system prompt.
+   */
+  set systemPrompt(prompt: string) {
+    this.baseSystemPrompt = prompt
+  }
+
+  /**
+   * Update the provider (for switching models at runtime).
+   */
+  setProvider(provider: Provider): void {
+    this.provider = provider
+    this.maxContextTokens = provider.info.capabilities.maxContextTokens
+  }
+
+  /**
+   * Truncate the session after a specific artifact (by ID or index).
+   * Removes all artifacts after the specified one from both memory and storage.
+   * Returns the number of artifacts removed.
+   */
+  async truncateAfter(artifactIdOrIndex: string | number): Promise<number> {
+    if (!this.session) {
+      throw new Error("No active session")
+    }
+
+    // Find the artifact
+    let targetIndex: number
+    if (typeof artifactIdOrIndex === "number") {
+      targetIndex = artifactIdOrIndex
+    } else {
+      targetIndex = this.artifacts.findIndex((a) => a.id === artifactIdOrIndex)
+      if (targetIndex === -1) {
+        throw new Error(`Artifact not found: ${artifactIdOrIndex}`)
+      }
+    }
+
+    if (targetIndex < 0 || targetIndex >= this.artifacts.length) {
+      throw new Error(`Invalid artifact index: ${targetIndex}`)
+    }
+
+    // Get the timestamp of the target artifact
+    const targetArtifact = this.artifacts[targetIndex]
+    if (!targetArtifact) {
+      throw new Error(`Artifact at index ${targetIndex} not found`)
+    }
+
+    const removedCount = this.artifacts.length - targetIndex - 1
+
+    if (removedCount === 0) {
+      return 0
+    }
+
+    // Remove from storage
+    await this.storage.deleteArtifactsAfter(this.session.id, targetArtifact.timestamp)
+
+    // Remove from memory
+    this.artifacts = this.artifacts.slice(0, targetIndex + 1)
+
+    return removedCount
   }
 
   /**
@@ -237,7 +321,7 @@ export class ActiveSession {
   private assembleContext(): Context {
     const options: ContextAssemblyOptions = {
       maxTokens: this.maxContextTokens,
-      systemPrompt: this.systemPrompt,
+      systemPrompt: this.buildSystemPrompt(),
       reservations: {
         response: this.responseReserve,
       },

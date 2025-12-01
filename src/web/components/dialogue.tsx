@@ -222,7 +222,7 @@ export function Dialogue() {
     sendMessage(text)
   }
 
-  function regenerate() {
+  async function regenerate() {
     if (isStreaming || messages.length === 0) return
 
     // Find last user message
@@ -242,7 +242,20 @@ export function Dialogue() {
 
     const lastUserContent = lastUserMsg.content
 
-    // Remove everything after the last user message
+    // Truncate backend session to remove agent response
+    if (sessionId) {
+      try {
+        await fetch("/api/session/truncate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, afterIndex: lastUserIndex }),
+        })
+      } catch (err) {
+        console.error("Failed to truncate session:", err)
+      }
+    }
+
+    // Remove everything after the last user message (frontend)
     setMessages(prev => prev.slice(0, lastUserIndex + 1))
 
     // Re-send without adding user message again

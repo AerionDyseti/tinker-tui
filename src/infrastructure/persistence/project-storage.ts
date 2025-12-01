@@ -684,6 +684,22 @@ export class ProjectStorage {
   }
 
   /**
+   * Delete all artifacts in a session with timestamp > afterTimestamp.
+   * Returns the number of artifacts deleted.
+   */
+  async deleteArtifactsAfter(
+    sessionId: string,
+    afterTimestamp: Date
+  ): Promise<number> {
+    const before = await this.messages!.countRows()
+    await this.messages!.delete(
+      `session_id = '${sessionId}' AND timestamp > ${afterTimestamp.getTime()}`
+    )
+    const after = await this.messages!.countRows()
+    return before - after
+  }
+
+  /**
    * Search artifacts using vector similarity.
    * Preferred alias for searchEntries().
    */

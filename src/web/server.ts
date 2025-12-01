@@ -237,6 +237,30 @@ async function main() {
         },
       },
 
+      // Truncate session after a specific message index
+      "/api/session/truncate": {
+        POST: async (req) => {
+          const body = await req.json() as {
+            sessionId: string
+            afterIndex: number
+          }
+          if (!body.sessionId) {
+            return Response.json({ error: "Missing sessionId" }, { status: 400 })
+          }
+          if (typeof body.afterIndex !== "number") {
+            return Response.json({ error: "Missing afterIndex" }, { status: 400 })
+          }
+          const removed = await sessionManager.truncateSession(
+            body.sessionId,
+            body.afterIndex
+          )
+          if (removed === null) {
+            return Response.json({ error: "Session not found" }, { status: 404 })
+          }
+          return Response.json({ removed })
+        },
+      },
+
       // Settings API
       "/api/settings": {
         GET: () => Response.json({

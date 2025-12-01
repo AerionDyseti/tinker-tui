@@ -135,6 +135,21 @@ export class SessionManager {
   }
 
   /**
+   * Truncate a session after a specific artifact index.
+   * Returns the number of artifacts removed, or null if session not found.
+   */
+  async truncateSession(
+    sessionId: string,
+    afterIndex: number
+  ): Promise<number | null> {
+    const session = await this.getSession(sessionId)
+    if (!session) {
+      return null
+    }
+    return session.truncateAfter(afterIndex)
+  }
+
+  /**
    * Build a new ActiveSession with current config and provider.
    */
   private buildActiveSession(): ActiveSession {

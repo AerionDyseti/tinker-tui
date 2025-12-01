@@ -298,3 +298,122 @@ test("counts knowledge", async () => {
   expect(await storage.countKnowledge("conversation")).toBe(2)
   expect(await storage.countKnowledge("user")).toBe(1)
 })
+
+// ─── Artifact Truncation ──────────────────────────────────────────
+
+test("deleteArtifactsAfter removes artifacts after timestamp", async () => {
+  const session = await storage.createSession(TEST_PROJECT_ID, "Truncate Test")
+
+  // Add artifacts with small delays to ensure distinct timestamps
+  const a1 = await storage.addArtifact(session.id, {
+    kind: "user_input",
+    content: "First",
+    embedding: createEmbedding(),
+    tokens: 5,
+  })
+
+  // Small delay to ensure different timestamp
+  await new Promise((r) => setTimeout(r, 10))
+
+  const a2 = await storage.addArtifact(session.id, {
+    kind: "agent_response",
+    content: "Second",
+    embedding: createEmbedding(),
+    tokens: 10,
+    model: "test",
+    provider: "test",
+    status: "complete",
+  })
+
+  await new Promise((r) => setTimeout(r, 10))
+
+  const a3 = await storage.addArtifact(session.id, {
+    kind: "user_input",
+    content: "Third",
+    embedding: createEmbedding(),
+    tokens: 5,
+  })
+
+  // Verify all 3 exist
+  let artifacts = await storage.getArtifacts(session.id)
+  expect(artifacts).toHaveLength(3)
+
+  // Delete after a1's timestamp (should remove a2 and a3)
+  const removed = await storage.deleteArtifactsAfter(session.id, a1.timestamp)
+  expect(removed).toBe(2)
+
+  // Verify only a1 remains
+  artifacts = await storage.getArtifacts(session.id)
+  expect(artifacts).toHaveLength(1)
+  expect(artifacts[0].id).toBe(a1.id)
+})
+
+test("deleteArtifactsAfter returns 0 when nothing to delete", async () => {
+  const session = await storage.createSession(TEST_PROJECT_ID, "Truncate Test")
+
+  const artifact = await storage.addArtifact(session.id, {
+    kind: "user_input",
+    content: "Only one",
+    embedding: createEmbedding(),
+    tokens: 5,
+  })
+
+  // Delete after this artifact's timestamp - nothing should be removed
+  const removed = await storage.deleteArtifactsAfter(session.id, artifact.timestamp)
+  expect(removed).toBe(0)
+
+  const artifacts = await storage.getArtifacts(session.id)
+  expect(artifacts).toHaveLength(1)
+})
+
+test("deleteArtifactsAfter only affects specified session", async () => {
+  const session1 = await storage.createSession(TEST_PROJECT_ID, "Session 1")
+  const session2 = await storage.createSession(TEST_PROJECT_ID, "Session 2")
+
+  const s1a1 = await storage.addArtifact(session1.id, {
+    kind: "user_input",
+    content: "S1 First",
+    embedding: createEmbedding(),
+    tokens: 5,
+  })
+
+  await new Promise((r) => setTimeout(r, 10))
+
+  await storage.addArtifact(session1.id, {
+    kind: "agent_response",
+    content: "S1 Second",
+    embedding: createEmbedding(),
+    tokens: 10,
+    model: "test",
+    provider: "test",
+    status: "complete",
+  })
+
+  await storage.addArtifact(session2.id, {
+    kind: "user_input",
+    content: "S2 First",
+    embedding: createEmbedding(),
+    tokens: 5,
+  })
+
+  await storage.addArtifact(session2.id, {
+    kind: "agent_response",
+    content: "S2 Second",
+    embedding: createEmbedding(),
+    tokens: 10,
+    model: "test",
+    provider: "test",
+    status: "complete",
+  })
+
+  // Delete from session1 only
+  await storage.deleteArtifactsAfter(session1.id, s1a1.timestamp)
+
+  // Session 1 should have 1 artifact
+  const s1Artifacts = await storage.getArtifacts(session1.id)
+  expect(s1Artifacts).toHaveLength(1)
+
+  // Session 2 should still have 2 artifacts
+  const s2Artifacts = await storage.getArtifacts(session2.id)
+  expect(s2Artifacts).toHaveLength(2)
+})
