@@ -578,8 +578,8 @@ export async function runIntegratedSimulation(config: SimulationConfig): Promise
   }
 
   const duration = Date.now() - startTime
-  const llmArtifacts = [...llmSession.currentArtifacts]
-  const humanArtifacts = humanSession ? [...humanSession.currentArtifacts] : undefined
+  const llmArtifacts = [...(await llmSession.getArtifacts())]
+  const humanArtifacts = humanSession ? [...(await humanSession.getArtifacts())] : undefined
   const llmSessionId = llmSession.currentSession?.id
   const humanSessionId = humanSession?.currentSession?.id
 

@@ -1,13 +1,16 @@
 /**
  * SessionManager - Manages session lifecycle to prevent singleton state leaks.
  *
- * Instead of a single global ActiveSession, this class:
+ * Instead of a single global ConversationService, this class:
  * - Creates new sessions on demand
  * - Caches loaded sessions by ID
  * - Provides a clean separation between session lifecycle and conversation logic
  */
 
-import { ActiveSession, type ActiveSessionConfig } from "./active-session.ts"
+import {
+  ConversationService,
+  type ConversationServiceConfig,
+} from "./conversation-service.ts"
 import type { ProjectStorage } from "@/infrastructure/persistence/project-storage.ts"
 import type { Provider } from "@/domain/provider.ts"
 import type { Embedder } from "@/infrastructure/embedding/index.ts"
@@ -36,7 +39,7 @@ export interface SessionManagerConfig {
 export class SessionManager {
   private config: SessionManagerConfig
   private provider: Provider
-  private loadedSessions = new Map<string, ActiveSession>()
+  private loadedSessions = new Map<string, ConversationService>()
 
   constructor(config: SessionManagerConfig, provider: Provider) {
     this.config = config
@@ -61,8 +64,8 @@ export class SessionManager {
   /**
    * Create a new session.
    */
-  async createSession(title?: string): Promise<ActiveSession> {
-    const session = this.buildActiveSession()
+  async createSession(title?: string): Promise<ConversationService> {
+    const session = this.buildConversationService()
     await session.start(title)
 
     // Cache by the new session ID
@@ -78,22 +81,22 @@ export class SessionManager {
    * Get an existing session by ID.
    * Returns cached instance if available, otherwise loads from storage.
    */
-  async getSession(sessionId: string): Promise<ActiveSession | null> {
+  async getSession(sessionId: string): Promise<ConversationService | null> {
     // Check cache first
     if (this.loadedSessions.has(sessionId)) {
       return this.loadedSessions.get(sessionId)!
     }
 
     // Load from storage
-    const session = this.buildActiveSession()
-    const loaded = await session.load(sessionId)
+    const service = this.buildConversationService()
+    const loaded = await service.load(sessionId)
 
     if (!loaded) {
       return null
     }
 
-    this.loadedSessions.set(sessionId, session)
-    return session
+    this.loadedSessions.set(sessionId, service)
+    return service
   }
 
   /**
@@ -101,7 +104,7 @@ export class SessionManager {
    * If sessionId is provided and exists, returns that session.
    * Otherwise creates a new session.
    */
-  async getOrCreateSession(sessionId?: string): Promise<ActiveSession> {
+  async getOrCreateSession(sessionId?: string): Promise<ConversationService> {
     if (sessionId) {
       const existing = await this.getSession(sessionId)
       if (existing) {
@@ -150,10 +153,10 @@ export class SessionManager {
   }
 
   /**
-   * Build a new ActiveSession with current config and provider.
+   * Build a new ConversationService with current config and provider.
    */
-  private buildActiveSession(): ActiveSession {
-    const sessionConfig: ActiveSessionConfig = {
+  private buildConversationService(): ConversationService {
+    const serviceConfig: ConversationServiceConfig = {
       projectId: this.config.projectId,
       provider: this.provider,
       storage: this.config.storage,
@@ -163,6 +166,6 @@ export class SessionManager {
       responseReserve: this.config.responseReserve,
     }
 
-    return new ActiveSession(sessionConfig)
+    return new ConversationService(serviceConfig)
   }
 }
