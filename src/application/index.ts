@@ -1,7 +1,6 @@
-// Active session
-export {
-  ActiveSession,
-  createActiveSession,
-  type ActiveSessionConfig,
-  type SessionEvent,
-} from "./active-session.ts"
+/**
+ * Application Layer — Orchestration and Use Cases
+ */
+
+export * from "./conversation-service.ts"
+export * from "./session-manager.ts"

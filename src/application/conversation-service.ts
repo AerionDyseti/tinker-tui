@@ -21,7 +21,8 @@ import type { Provider, StreamChunk } from "@/domain/provider.ts"
 import type { Context, ContextAssemblyOptions } from "@/domain/context.ts"
 import type { ProjectStorage } from "@/infrastructure/persistence/index.ts"
 import type { Embedder } from "@/infrastructure/embedding/types.ts"
-import { ContextAssembler } from "@/infrastructure/context/index.ts"
+import type { ContextAssembler as ContextAssemblerPort } from "@/domain/ports/index.ts"
+import { ContextAssembler, createContextAssembler } from "@/infrastructure/context/index.ts"
 
 /**
  * Configuration for a conversation service.
@@ -38,6 +39,9 @@ export interface ConversationServiceConfig {
 
   /** The embedder for creating artifact embeddings */
   embedder: Embedder
+
+  /** Context assembler instance (optional, created if not provided) */
+  assembler?: ContextAssemblerPort
 
   /** System prompt for the conversation */
   systemPrompt?: string
@@ -76,7 +80,7 @@ export class ConversationService {
   private provider: Provider
   private storage: ProjectStorage
   private embedder: Embedder
-  private assembler: ContextAssembler
+  private assembler: ContextAssemblerPort
   private baseSystemPrompt: string
   private workingDirectory: string
   private maxContextTokens: number
@@ -89,7 +93,10 @@ export class ConversationService {
     this.provider = config.provider
     this.storage = config.storage
     this.embedder = config.embedder
-    this.assembler = new ContextAssembler()
+    // Use provided assembler or create one with repository access
+    this.assembler = config.assembler ?? createContextAssembler({
+      artifactRepository: config.storage,
+    })
     this.baseSystemPrompt = config.systemPrompt ?? "You are a helpful assistant."
     this.workingDirectory = config.workingDirectory ?? process.cwd()
     this.maxContextTokens =
@@ -103,9 +110,8 @@ export class ConversationService {
   private buildSystemPrompt(): string {
     const now = new Date().toISOString()
     return `${this.baseSystemPrompt}
-
-The current time is: ${now}
-Your current working directory is: ${this.workingDirectory}`
+    The current time is: ${now}
+    Your current working directory is: ${this.workingDirectory}`
   }
 
   /**
@@ -307,10 +313,10 @@ Your current working directory is: ${this.workingDirectory}`
 
   /**
    * Assemble context from stored artifacts.
+   * Uses assembleWithRetrieval if the assembler supports it (preferred),
+   * otherwise falls back to manual fetch + assemble.
    */
   private async assembleContext(): Promise<Context> {
-    const artifacts = await this.storage.getArtifacts(this.session!.id)
-
     const options: ContextAssemblyOptions = {
       maxTokens: this.maxContextTokens,
       systemPrompt: this.buildSystemPrompt(),
@@ -319,6 +325,16 @@ Your current working directory is: ${this.workingDirectory}`
       },
     }
 
+    // Prefer assembleWithRetrieval if available (fetches its own artifacts)
+    if (this.assembler.assembleWithRetrieval) {
+      return this.assembler.assembleWithRetrieval({
+        ...options,
+        sessionId: this.session!.id,
+      })
+    }
+
+    // Fallback: manual fetch + assemble
+    const artifacts = await this.storage.getArtifacts(this.session!.id)
     return this.assembler.assemble(artifacts, options)
   }
 
@@ -338,8 +354,6 @@ Your current working directory is: ${this.workingDirectory}`
 /**
  * Create a conversation service with the given configuration.
  */
-export function createConversationService(
-  config: ConversationServiceConfig
-): ConversationService {
+export function createConversationService(config: ConversationServiceConfig): ConversationService {
   return new ConversationService(config)
 }
